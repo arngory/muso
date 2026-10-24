@@ -30,8 +30,10 @@ pub struct LibraryUi {
     pub albums: gtk::Box,
     pub tracks: TrackList,
     pub found_artists_title: gtk::Label,
+    pub found_artists_row: gtk::ScrolledWindow,
     pub found_artists: gtk::Box,
     pub found_albums_title: gtk::Label,
+    pub found_albums_row: gtk::ScrolledWindow,
     pub found_albums: gtk::Box,
     pub found_tracks_title: gtk::Label,
     pub found_tracks: TrackList,
@@ -108,14 +110,15 @@ fn section(name: &str, count: &gtk::Label) -> gtk::ListBoxRow {
     gtk::ListBoxRow::builder().child(&row).build()
 }
 
-fn albums_row() -> (gtk::ScrolledWindow, gtk::Box) {
-    let albums = gtk::Box::builder().css_classes(["albums"]).build();
+/// A row that scrolls sideways when it holds more than fits.
+fn row(class: &str) -> (gtk::ScrolledWindow, gtk::Box) {
+    let content = gtk::Box::builder().css_classes([class]).build();
     let scroll = gtk::ScrolledWindow::builder()
-        .child(&albums)
+        .child(&content)
         .vscrollbar_policy(gtk::PolicyType::Never)
         .propagate_natural_height(true)
         .build();
-    (scroll, albums)
+    (scroll, content)
 }
 
 pub fn build() -> LibraryUi {
@@ -210,7 +213,7 @@ pub fn build() -> LibraryUi {
             .build(),
     );
 
-    let (albums_scroll, albums) = albums_row();
+    let (albums_scroll, albums) = row("albums");
     let tracks = TrackList::new(Columns {
         number: true,
         artist: false,
@@ -225,9 +228,9 @@ pub fn build() -> LibraryUi {
     browse.append(&tracks.root);
 
     let found_artists_title = heading("");
-    let found_artists = gtk::Box::builder().css_classes(["found-artists"]).build();
+    let (found_artists_row, found_artists) = row("found-artists");
     let found_albums_title = heading("");
-    let (found_albums_scroll, found_albums) = albums_row();
+    let (found_albums_row, found_albums) = row("albums");
     let found_tracks_title = heading("");
     let found_tracks = TrackList::new(Columns {
         number: false,
@@ -240,9 +243,9 @@ pub fn build() -> LibraryUi {
         .build();
     for w in [
         found_artists_title.upcast_ref::<gtk::Widget>(),
-        found_artists.upcast_ref(),
+        found_artists_row.upcast_ref(),
         found_albums_title.upcast_ref(),
-        found_albums_scroll.upcast_ref(),
+        found_albums_row.upcast_ref(),
         found_tracks_title.upcast_ref(),
         found_tracks.root.upcast_ref(),
     ] {
@@ -324,8 +327,10 @@ pub fn build() -> LibraryUi {
         albums,
         tracks,
         found_artists_title,
+        found_artists_row,
         found_artists,
         found_albums_title,
+        found_albums_row,
         found_albums,
         found_tracks_title,
         found_tracks,

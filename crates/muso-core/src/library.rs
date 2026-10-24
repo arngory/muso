@@ -264,11 +264,10 @@ impl Library {
     /// The track at `path`, as last read.
     pub fn track(&self, path: &Path) -> Result<Option<TrackInfo>, Error> {
         self.db
-            .query_row(
-                &format!("SELECT {TRACK_COLUMNS} FROM tracks WHERE path = ?1"),
-                [path.as_os_str().as_bytes()],
-                track_info,
-            )
+            .prepare_cached(&format!(
+                "SELECT {TRACK_COLUMNS} FROM tracks WHERE path = ?1"
+            ))?
+            .query_row([path.as_os_str().as_bytes()], track_info)
             .optional()
     }
 
@@ -327,7 +326,7 @@ impl Library {
         params: &[&dyn ToSql],
         limit: Option<usize>,
     ) -> Result<Vec<Artist>, Error> {
-        let mut stmt = self.db.prepare(&format!(
+        let mut stmt = self.db.prepare_cached(&format!(
             "SELECT group_artist, COUNT(DISTINCT group_album) FROM tracks {filter}
              GROUP BY group_artist"
         ))?;
@@ -353,7 +352,7 @@ impl Library {
         params: &[&dyn ToSql],
         limit: Option<usize>,
     ) -> Result<Vec<Album>, Error> {
-        let mut stmt = self.db.prepare(&format!(
+        let mut stmt = self.db.prepare_cached(&format!(
             "SELECT group_artist, group_album, MIN(year), COUNT(*),
                  (SELECT path FROM tracks f
                   WHERE f.group_artist = t.group_artist AND f.group_album = t.group_album
@@ -382,7 +381,7 @@ impl Library {
         params: &[&dyn ToSql],
         limit: Option<usize>,
     ) -> Result<Vec<TrackInfo>, Error> {
-        let mut stmt = self.db.prepare(&format!(
+        let mut stmt = self.db.prepare_cached(&format!(
             "SELECT {TRACK_COLUMNS} FROM tracks {filter}
              ORDER BY group_artist, group_album, {TRACK_ORDER} {}",
             limit_clause(limit)

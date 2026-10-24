@@ -1,9 +1,10 @@
 //! A list of tracks: number, title, optionally artist and album, length.
-//! Rows are made only for what's on screen, so a queue of the whole library
-//! stays quick. The track playing now is shown inverted.
+//! Rows are made only for what's on screen, and a list of paths looks up
+//! each track's tags only when its row shows, so a queue of the whole
+//! library stays quick. The track playing now is shown inverted.
 
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gtk::prelude::*;
@@ -19,13 +20,36 @@ pub struct TrackList {
     store: gio::ListStore,
     selection: gtk::SingleSelection,
     current: Rc<RefCell<Option<PathBuf>>>,
+    lookup: Lookup,
     /// The row widgets that exist and the track each shows. ListView keeps
     /// a row as it is when its item stays, so marking the playing track
-    /// goes through these.
+    /// goes through these. Weak, so they don't outlive the list's rows.
     rows: Rows,
 }
 
-type Rows = Rc<RefCell<Vec<(gtk::Box, PathBuf)>>>;
+type Rows = Rc<RefCell<Vec<(glib::WeakRef<gtk::Box>, PathBuf)>>>;
+
+/// Finds the tags of a track given by path, for [`TrackList::set_paths`].
+type Lookup = Rc<RefCell<Option<Box<dyn Fn(&Path) -> TrackInfo>>>>;
+
+/// What the store holds: a track, or its path until its tags are needed.
+struct Entry {
+    path: PathBuf,
+    info: Option<TrackInfo>,
+}
+
+impl Entry {
+    fn info(&mut self, lookup: &Lookup) -> &TrackInfo {
+        self.info
+            .get_or_insert_with(|| match lookup.borrow().as_ref() {
+                Some(find) => find(&self.path),
+                None => TrackInfo {
+                    path: self.path.clone(),
+                    ..TrackInfo::default()
+                },
+            })
+    }
+}
 
 /// Which columns a list shows.
 #[derive(Clone, Copy)]
@@ -44,6 +68,7 @@ impl TrackList {
             .can_unselect(true)
             .build();
         let current: Rc<RefCell<Option<PathBuf>>> = Rc::default();
+        let lookup: Lookup = Rc::default();
         let rows: Rows = Rc::default();
 
         let factory = gtk::SignalListItemFactory::new();
@@ -75,18 +100,13 @@ impl TrackList {
             cell(&["album"], true, columns.album);
             cell(&["length"], false, true);
             item.set_child(Some(&row));
-            made.borrow_mut().push((row, PathBuf::new()));
-        });
-        let made = rows.clone();
-        factory.connect_teardown(move |_, item| {
-            let item = item.downcast_ref::<gtk::ListItem>().expect("a list item");
-            if let Some(row) = item.child() {
-                made.borrow_mut()
-                    .retain(|(r, _)| r.upcast_ref::<gtk::Widget>() != &row);
-            }
+            let mut made = made.borrow_mut();
+            made.retain(|(r, _)| r.upgrade().is_some());
+            made.push((row.downgrade(), PathBuf::new()));
         });
         let shown = current.clone();
         let made = rows.clone();
+        let find = lookup.clone();
         factory.connect_bind(move |_, item| {
             let item = item.downcast_ref::<gtk::ListItem>().expect("a list item");
             let (Some(row), Some(object)) = (item.child(), item.item()) else {
@@ -95,7 +115,8 @@ impl TrackList {
             let object = object
                 .downcast::<glib::BoxedAnyObject>()
                 .expect("the store holds tracks");
-            let track = object.borrow::<TrackInfo>();
+            let mut entry = object.borrow_mut::<Entry>();
+            let track = entry.info(&find);
             let mut labels = std::iter::successors(row.first_child(), |w| w.next_sibling())
                 .filter_map(|w| w.downcast::<gtk::Label>().ok());
             let mut set = |text: &str| {
@@ -115,11 +136,10 @@ impl TrackList {
                 .unwrap_or_default());
             set(track.album.as_deref().unwrap_or_default());
             set(&track.duration.map(format_time).unwrap_or_default());
-            if let Some(entry) = made
-                .borrow_mut()
-                .iter_mut()
-                .find(|(r, _)| r.upcast_ref::<gtk::Widget>() == &row)
-            {
+            if let Some(entry) = made.borrow_mut().iter_mut().find(|(r, _)| {
+                r.upgrade()
+                    .is_some_and(|r| r.upcast_ref::<gtk::Widget>() == &row)
+            }) {
                 entry.1 = track.path.clone();
             }
             mark(&row, shown.borrow().as_ref() == Some(&track.path));
@@ -141,13 +161,33 @@ impl TrackList {
             store,
             selection,
             current,
+            lookup,
             rows,
         }
     }
 
     pub fn set(&self, tracks: Vec<TrackInfo>) {
-        let items: Vec<glib::BoxedAnyObject> =
-            tracks.into_iter().map(glib::BoxedAnyObject::new).collect();
+        self.fill(tracks.into_iter().map(|t| Entry {
+            path: t.path.clone(),
+            info: Some(t),
+        }));
+    }
+
+    /// Lists the tracks at `paths`, finding their tags with the function
+    /// given to [`TrackList::set_lookup`] as their rows show.
+    pub fn set_paths(&self, paths: &[PathBuf]) {
+        self.fill(paths.iter().map(|path| Entry {
+            path: path.clone(),
+            info: None,
+        }));
+    }
+
+    pub fn set_lookup(&self, find: impl Fn(&Path) -> TrackInfo + 'static) {
+        self.lookup.replace(Some(Box::new(find)));
+    }
+
+    fn fill(&self, entries: impl Iterator<Item = Entry>) {
+        let items: Vec<glib::BoxedAnyObject> = entries.map(glib::BoxedAnyObject::new).collect();
         self.store.splice(0, self.store.n_items(), &items);
         self.selection.set_selected(gtk::INVALID_LIST_POSITION);
     }
@@ -156,14 +196,20 @@ impl TrackList {
         self.store.n_items() as usize
     }
 
-    pub fn get(&self, index: usize) -> Option<TrackInfo> {
-        let object = self.store.item(index as u32)?;
-        let object = object.downcast::<glib::BoxedAnyObject>().ok()?;
-        Some(object.borrow::<TrackInfo>().clone())
+    fn entry(&self, index: usize) -> Option<glib::BoxedAnyObject> {
+        self.store.item(index as u32)?.downcast().ok()
     }
 
-    pub fn tracks(&self) -> Vec<TrackInfo> {
-        (0..self.len()).filter_map(|i| self.get(i)).collect()
+    pub fn get(&self, index: usize) -> Option<TrackInfo> {
+        let object = self.entry(index)?;
+        let mut entry = object.borrow_mut::<Entry>();
+        Some(entry.info(&self.lookup).clone())
+    }
+
+    pub fn paths(&self) -> Vec<PathBuf> {
+        (0..self.len())
+            .filter_map(|i| Some(self.entry(i)?.borrow::<Entry>().path.clone()))
+            .collect()
     }
 
     pub fn selected(&self) -> Option<usize> {
@@ -185,7 +231,9 @@ impl TrackList {
     pub fn set_current(&self, path: Option<&PathBuf>) {
         self.current.replace(path.cloned());
         for (row, shows) in self.rows.borrow().iter() {
-            mark(row, Some(shows) == path);
+            if let Some(row) = row.upgrade() {
+                mark(&row, Some(shows) == path);
+            }
         }
     }
 

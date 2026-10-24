@@ -3,10 +3,11 @@
 
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::atomic::Ordering;
 
-use gtk::glib;
 use gtk::prelude::*;
-use muso_core::library::{Album, Library};
+use gtk::{gio, glib};
+use muso_core::library::{Album, Found, Library};
 use muso_core::track::TrackInfo;
 
 use super::{App, Mode};
@@ -25,7 +26,7 @@ impl App {
     /// Opens the library file, fills the queue from it if nothing else did,
     /// and starts the scan.
     pub(super) fn load_library(self: &Rc<Self>) {
-        let db = glib::user_data_dir().join("muso").join("library.db");
+        let db = self.library_file.clone();
         match Library::open(&db) {
             Ok(l) => *self.library.borrow_mut() = Some(l),
             Err(e) => eprintln!("muso: {}: {e}", db.display()),
@@ -122,6 +123,15 @@ impl App {
     pub(super) fn connect_library(self: &Rc<Self>) {
         let ui = &self.lib_ui;
         let app = Rc::downgrade(self);
+        ui.queue.set_lookup(move |path| {
+            app.upgrade()
+                .and_then(|app| app.library.borrow().as_ref()?.track(path).ok()?)
+                .unwrap_or_else(|| TrackInfo {
+                    path: path.to_owned(),
+                    ..TrackInfo::default()
+                })
+        });
+        let app = Rc::downgrade(self);
         ui.sidebar.connect_row_selected(move |_, row| {
             if let (Some(app), Some(row)) = (app.upgrade(), row) {
                 app.show_section(row.index());
@@ -193,8 +203,10 @@ impl App {
             Mode::Library => {
                 ui.osc_panel.remove(&ui.info);
                 lib.bar_start.append(&ui.info);
+                ui.info.set_valign(gtk::Align::Center);
                 ui.controls.set_center_widget(None::<&gtk::Widget>);
                 lib.bar.set_center_widget(Some(&ui.transport));
+                ui.transport.set_valign(gtk::Align::Center);
                 ui.right.remove(&ui.volume);
                 lib.bar_end.prepend(&ui.volume);
                 ui.right.remove(&ui.menu);
@@ -205,8 +217,10 @@ impl App {
             Mode::Cover => {
                 lib.bar_start.remove(&ui.info);
                 ui.osc_panel.prepend(&ui.info);
+                ui.info.set_valign(gtk::Align::Fill);
                 lib.bar.set_center_widget(None::<&gtk::Widget>);
                 ui.controls.set_center_widget(Some(&ui.transport));
+                ui.transport.set_valign(gtk::Align::Fill);
                 lib.bar_end.remove(&ui.volume);
                 ui.right.prepend(&ui.volume);
                 lib.topbar.remove(&ui.menu);
@@ -372,8 +386,8 @@ impl App {
         let mut tiles = Vec::new();
         for album in albums {
             let tile = AlbumTile::new(&album.title, album.year);
-            self.covers.show(&album.first, &tile.cover);
             row.append(&tile.button);
+            self.covers.show(&album.first, &tile.cover);
             tiles.push((album.clone(), tile.button));
         }
         tiles
@@ -461,8 +475,7 @@ impl App {
 
     /// Plays the tracks of `list` from `index`.
     fn play_list(&self, list: &TrackList, index: usize) {
-        let paths = list.tracks().into_iter().map(|t| t.path).collect();
-        self.replace_queue(paths, index);
+        self.replace_queue(list.paths(), index);
     }
 
     /// `n`: the selected track plays after the current one.
@@ -545,16 +558,40 @@ impl App {
         true
     }
 
+    /// Searches on another thread, with a connection of its own: in a
+    /// library of tens of thousands of tracks a search takes long enough to
+    /// stall typing.
     fn update_search(self: &Rc<Self>) {
-        let ui = &self.lib_ui;
-        let query = ui.search.text();
+        let query = self.lib_ui.search.text().to_string();
         if self.selected_section() != SECTION_LIBRARY && !query.is_empty() {
             self.show_section(SECTION_LIBRARY);
         }
-        let found = match self.library.borrow().as_ref() {
-            Some(l) => l.search(&query, SEARCH_LIMIT).unwrap_or_default(),
-            None => Default::default(),
-        };
+        let search = self.searches.fetch_add(1, Ordering::Relaxed) + 1;
+        let searches = self.searches.clone();
+        let db = self.library_file.clone();
+        let app = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let found = gio::spawn_blocking(move || {
+                // A newer search started while this one waited.
+                if searches.load(Ordering::Relaxed) != search {
+                    return None;
+                }
+                Library::open(&db)
+                    .and_then(|l| l.search(&query, SEARCH_LIMIT))
+                    .ok()
+            })
+            .await
+            .ok()
+            .flatten();
+            let Some(app) = app.upgrade() else { return };
+            if app.searches.load(Ordering::Relaxed) == search {
+                app.show_search(found.unwrap_or_default());
+            }
+        });
+    }
+
+    fn show_search(self: &Rc<Self>, found: Found) {
+        let ui = &self.lib_ui;
         let changed = *self.found.borrow() != found;
         if changed {
             while let Some(child) = ui.found_artists.first_child() {
@@ -594,8 +631,8 @@ impl App {
                 label.set_label(&format!("{} · {n}", title.to_uppercase()));
                 label.set_visible(n > 0);
             }
-            ui.found_artists.set_visible(!found.artists.is_empty());
-            ui.found_albums.set_visible(!found.albums.is_empty());
+            ui.found_artists_row.set_visible(!found.artists.is_empty());
+            ui.found_albums_row.set_visible(!found.albums.is_empty());
             ui.found_tracks.root.set_visible(!found.tracks.is_empty());
             *self.found.borrow_mut() = found;
         }
@@ -631,22 +668,8 @@ impl App {
         if self.selected_section() != SECTION_QUEUE {
             return;
         }
-        let library = self.library.borrow();
-        let tracks: Vec<TrackInfo> = queue
-            .items()
-            .iter()
-            .map(|path| {
-                library
-                    .as_ref()
-                    .and_then(|l| l.track(path).ok().flatten())
-                    .unwrap_or_else(|| TrackInfo {
-                        path: path.clone(),
-                        ..TrackInfo::default()
-                    })
-            })
-            .collect();
+        ui.queue.set_paths(queue.items());
         drop(queue);
-        ui.queue.set(tracks);
         self.mark_current();
     }
 }

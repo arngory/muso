@@ -8,7 +8,8 @@ mod library;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::mpsc;
+use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use gtk::prelude::*;
@@ -54,8 +55,11 @@ pub struct App {
     /// The window size each mode had when last left.
     cover_size: Cell<(i32, i32)>,
     library_size: Cell<(i32, i32)>,
+    library_file: PathBuf,
     /// `None` if the library file can't be opened.
     library: RefCell<Option<Library>>,
+    /// Counts searches, so a slow one doesn't show over a newer one.
+    searches: Arc<AtomicU64>,
     roots: Vec<PathBuf>,
     covers: Covers,
     scan: RefCell<Option<mpsc::Receiver<scanner::Update>>>,
@@ -134,7 +138,9 @@ impl App {
             mode: Cell::new(Mode::Cover),
             cover_size: Cell::new(em_px(COVER_EM)),
             library_size: Cell::new(em_px(LIBRARY_EM)),
+            library_file: glib::user_data_dir().join("muso").join("library.db"),
             library: RefCell::default(),
+            searches: Arc::default(),
             roots,
             covers: Covers::new(formats.clone()),
             scan: RefCell::default(),
@@ -188,6 +194,9 @@ impl App {
 
     pub fn present(&self) {
         self.window.present();
+        // GTK focuses the first focusable widget, which in the library is
+        // the search field; keys would type into it instead of playing.
+        GtkWindowExt::set_focus(&self.window, None::<&gtk::Widget>);
     }
 
     /// Replaces the queue with `paths` (folders are searched for music) and
