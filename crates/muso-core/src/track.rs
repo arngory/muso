@@ -54,6 +54,7 @@ pub struct TrackInfo {
     pub album_artist: Option<String>,
     pub track_number: Option<u32>,
     pub disc_number: Option<u32>,
+    pub year: Option<u32>,
     pub duration: Option<Duration>,
 }
 
@@ -81,6 +82,7 @@ impl TrackInfo {
             info.album_artist = text(tag.get_string(ItemKey::AlbumArtist).map(Into::into));
             info.track_number = tag.track();
             info.disc_number = tag.disk();
+            info.year = tag.date().map(|d| d.year.into());
         }
         info
     }
@@ -152,7 +154,7 @@ pub fn collect(paths: &[PathBuf], formats: &Formats) -> Vec<PathBuf> {
     files
 }
 
-fn walk(dir: &Path, formats: &Formats, found: &mut Vec<PathBuf>) {
+pub(crate) fn walk(dir: &Path, formats: &Formats, found: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -170,6 +172,7 @@ fn walk(dir: &Path, formats: &Formats, found: &mut Vec<PathBuf>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::{TempDir, wav};
     use lofty::config::WriteOptions;
     use lofty::picture::{MimeType, Picture};
     use lofty::tag::{Tag, TagType};
@@ -183,41 +186,6 @@ mod tests {
         }
     }
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(name: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("muso-core-{name}-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&dir);
-            fs::create_dir_all(&dir).unwrap();
-            TempDir(dir)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
-
-    /// A second of 8 kHz mono silence.
-    fn wav(path: &Path) {
-        let data_len = 16_000u32;
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"RIFF");
-        bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
-        bytes.extend_from_slice(b"WAVEfmt ");
-        for v in [16u32.to_le_bytes(), [1, 0, 1, 0], 8000u32.to_le_bytes()] {
-            bytes.extend_from_slice(&v);
-        }
-        bytes.extend_from_slice(&16_000u32.to_le_bytes());
-        bytes.extend_from_slice(&[2, 0, 16, 0]);
-        bytes.extend_from_slice(b"data");
-        bytes.extend_from_slice(&data_len.to_le_bytes());
-        bytes.resize(bytes.len() + data_len as usize, 0);
-        fs::write(path, bytes).unwrap();
-    }
-
     #[test]
     fn reads_tags_and_embedded_cover() {
         let dir = TempDir::new("tags");
@@ -228,6 +196,7 @@ mod tests {
         tag.set_artist("Artist".into());
         tag.set_album("Album".into());
         tag.set_track(3);
+        tag.set_date("1994-03-07".parse().unwrap());
         tag.push_picture(
             Picture::unchecked(b"png bytes".to_vec())
                 .pic_type(PictureType::CoverFront)
@@ -241,6 +210,7 @@ mod tests {
         assert_eq!(info.artist.as_deref(), Some("Artist"));
         assert_eq!(info.album.as_deref(), Some("Album"));
         assert_eq!(info.track_number, Some(3));
+        assert_eq!(info.year, Some(1994));
         assert_eq!(info.duration, Some(Duration::from_secs(1)));
         assert_eq!(cover(&path, &formats()).as_deref(), Some(&b"png bytes"[..]));
     }

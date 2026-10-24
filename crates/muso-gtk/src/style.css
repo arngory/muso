@@ -59,7 +59,7 @@ window.muso {
   font-size: 0.6875em;
 }
 
-.osc .time.emaining,
+.osc .time.remaining,
 .volume-popup .value {
   color: #a8a8a8;
 }
@@ -197,6 +197,257 @@ tooltip {
   font-size: 0.75em;
 }
 
+/* Library mode. Its text is 13px, so most sizes here are design pixels / 13
+   (or / 11, / 12 where the font is smaller). */
+
+.library {
+  font-size: 0.8125em;
+}
+
+.library .topbar {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.9231em;
+  padding: 0.5em 1.6667em 0.5em 1.6667em;
+  border-spacing: 1em;
+  border-bottom: 1px solid #262626;
+}
+
+.library .prompt,
+.library .count,
+.library .heading,
+.library .year,
+.library .scanbar,
+.library listview row,
+.library .sidebar row {
+  color: #9a9a9a;
+}
+
+.library entry.search {
+  background: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  color: inherit;
+  padding: 0;
+  min-height: 2.6667em;
+}
+
+.library .topbar button.icon {
+  min-height: 2.6667em;
+}
+
+.library .scanbar {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8462em;
+  padding: 0.7273em 1.8182em;
+  border-spacing: 1.0909em;
+  border-bottom: 1px solid #262626;
+}
+
+.library .scanbar .slider {
+  min-width: 21.8182em;
+  color: #fff;
+}
+
+.library .sidebar,
+.library .artists-column {
+  background: none;
+  padding: 1.2308em 0;
+  border-right: 1px solid #262626;
+}
+
+.library .sidebar {
+  min-width: 15.3846em;
+}
+
+.library .artists-column {
+  min-width: 16.9231em;
+}
+
+.library .sidebar row,
+.library listview.artists > row {
+  padding: 0.4615em 1.5385em;
+  border-radius: 0;
+  background: none;
+}
+
+.library .sidebar .count {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.9231em;
+}
+
+.library .sidebar row:selected,
+.library listview.artists > row:selected,
+.library listview.tracks > row:selected {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.library .heading {
+  font-size: 0.8462em;
+  letter-spacing: 0.08em;
+  padding: 0 1.8182em 0.9091em;
+}
+
+.library listview,
+.library scrolledwindow {
+  background: none;
+  color: inherit;
+}
+
+.library .browse,
+.library .found {
+  padding: 1.5385em 1.8462em 0;
+  border-spacing: 1.5385em;
+}
+
+.library .queue {
+  padding: 1.5385em 1.8462em 0;
+}
+
+.library .found .heading {
+  padding: 0 0 0.3em;
+}
+
+.library .browse separator {
+  background: #262626;
+  min-height: 1px;
+}
+
+.library .albums {
+  border-spacing: 0.9231em;
+  padding-bottom: 0.3em;
+}
+
+.library button.album {
+  background: none;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  color: #9a9a9a;
+  font-weight: normal;
+}
+
+.library button.album > box {
+  border-spacing: 0.4615em;
+}
+
+.library .album .name {
+  font-size: 0.9231em;
+}
+
+.library .album .year {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8462em;
+}
+
+.library image.cover {
+  -gtk-icon-size: 9.2308em;
+  background: #1c1c1c;
+  border: 1px solid transparent;
+}
+
+.library button.album.selected {
+  color: #fff;
+}
+
+.library button.album.selected image.cover {
+  border-color: #fff;
+}
+
+.library button.album:hover image.cover {
+  border-color: #9a9a9a;
+}
+
+.library listview.tracks {
+  font-family: "JetBrains Mono", monospace;
+}
+
+.library listview.tracks > row {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.library .track {
+  padding: 0.3846em 0.9231em;
+  border-spacing: 1.2308em;
+}
+
+.library .track .number {
+  min-width: 1.5385em;
+}
+
+.library .track.current {
+  background: #fff;
+  color: #000;
+}
+
+.library .found-artists {
+  border-spacing: 0.5em;
+}
+
+.library button.artist {
+  background: #1a1a1a;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  color: #fff;
+  padding: 0.4615em 0.9231em;
+  font-weight: normal;
+}
+
+.library .empty {
+  color: #9a9a9a;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.library .bar {
+  padding: 0.9231em 1.5385em;
+  border-top: 1px solid #262626;
+}
+
+.library .bar .now {
+  border-spacing: 1.0769em;
+}
+
+.library .bar image.thumb {
+  -gtk-icon-size: 4.9231em;
+}
+
+.library .bar .info {
+  border-spacing: 0.2308em;
+}
+
+.library .bar .title {
+  font-size: 1.0769em;
+  font-weight: 500;
+}
+
+.library .bar .subline {
+  font-size: 0.9231em;
+  color: #9a9a9a;
+}
+
+.library .bar .transport {
+  min-width: 36.9231em;
+  margin: 0 1.8462em;
+}
+
+.library .bar .time {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8462em;
+}
+
+.library .bar .progress-row {
+  border-spacing: 0.7692em;
+}
+
+.library .bar .time.remaining {
+  color: #9a9a9a;
+}
+
 /* Light theme */
 
 window.muso.light {
@@ -214,7 +465,7 @@ window.muso.light {
 }
 
 .light .osc .subline,
-.light .osc .time.emaining,
+.light .osc .time.remaining,
 .light .volume-popup .value,
 .light .help .key {
   color: #555;
@@ -244,4 +495,62 @@ window.muso.light {
 .light .osd {
   background: rgba(255, 255, 255, 0.88);
   color: #000;
+}
+
+.light .library .topbar,
+.light .library .scanbar,
+.light .library .bar {
+  border-color: #e0e0e0;
+}
+
+.light .library .sidebar,
+.light .library .artists-column {
+  border-color: #e0e0e0;
+}
+
+.light .library .prompt,
+.light .library .count,
+.light .library .heading,
+.light .library .year,
+.light .library .scanbar,
+.light .library listview row,
+.light .library .sidebar row,
+.light .library button.album,
+.light .library .empty,
+.light .library .bar .subline,
+.light .library .bar .time.remaining {
+  color: #555;
+}
+
+.light .library .sidebar row:selected,
+.light .library listview.artists > row:selected,
+.light .library listview.tracks > row:selected,
+.light .library button.artist {
+  background: #ececec;
+  color: #000;
+}
+
+.light .library .browse separator {
+  background: #e0e0e0;
+}
+
+.light .library image.cover {
+  background: #e6e6e6;
+}
+
+.light .library button.album.selected {
+  color: #000;
+}
+
+.light .library button.album.selected image.cover {
+  border-color: #000;
+}
+
+.light .library .scanbar .slider {
+  color: #000;
+}
+
+.light .library .track.current {
+  background: #000;
+  color: #fff;
 }

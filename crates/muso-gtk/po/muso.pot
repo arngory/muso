@@ -137,3 +137,56 @@ msgstr ""
 
 msgid "Settings"
 msgstr ""
+
+msgid "Search: artist, album, title"
+msgstr ""
+
+msgid "Tracks: {}"
+msgstr ""
+
+msgid "Scanning {}"
+msgstr ""
+
+msgid "You can listen while it scans"
+msgstr ""
+
+msgid "Can't scan the library: {}"
+msgstr ""
+
+msgid "Can't open the library file"
+msgstr ""
+
+msgid ""
+"No music folder.\n"
+"Set one with library= in muso.conf."
+msgstr ""
+
+msgid "No music in {} yet"
+msgstr ""
+
+msgid "Unknown artist"
+msgstr ""
+
+msgid "Artists"
+msgstr ""
+
+msgid "Albums"
+msgstr ""
+
+msgid "Tracks"
+msgstr ""
+
+msgid "Nothing found"
+msgstr ""
+
+msgid "Plays next: {}"
+msgstr ""
+
+msgid "Select a track in the library first"
+msgstr ""
+
+msgid "Added to the queue: {}"
+msgstr ""
+
+msgid "Back to the cover"
+msgstr ""

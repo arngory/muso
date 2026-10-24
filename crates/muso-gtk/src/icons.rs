@@ -21,11 +21,13 @@ pub enum Icon {
     Volume,
     Muted,
     Menu,
+    Library,
+    Collapse,
 }
 
 impl Icon {
     #[cfg(test)]
-    pub const ALL: [Icon; 9] = [
+    pub const ALL: [Icon; 11] = [
         Icon::Shuffle,
         Icon::Prev,
         Icon::Play,
@@ -35,6 +37,8 @@ impl Icon {
         Icon::Volume,
         Icon::Muted,
         Icon::Menu,
+        Icon::Library,
+        Icon::Collapse,
     ];
 
     pub fn source(self) -> &'static str {
@@ -48,6 +52,8 @@ impl Icon {
             Icon::Volume => include_str!("../icons/volume.svg"),
             Icon::Muted => include_str!("../icons/muted.svg"),
             Icon::Menu => include_str!("../icons/menu.svg"),
+            Icon::Library => include_str!("../icons/library.svg"),
+            Icon::Collapse => include_str!("../icons/collapse.svg"),
         }
     }
 

@@ -9,3 +9,4 @@ repository.workspace = true
 
 [dependencies]
 lofty = "0.25"
+rusqlite = "0.41"

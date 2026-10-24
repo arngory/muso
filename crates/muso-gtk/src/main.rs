@@ -2,15 +2,21 @@
 //! libmpv.
 
 mod app;
+mod covers;
 mod i18n;
 mod icons;
 mod keys;
+mod library_ui;
+mod scanner;
 mod slider;
 mod svg;
+mod track_list;
 mod ui;
+mod wakeup;
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Duration;
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
@@ -49,11 +55,7 @@ fn main() -> glib::ExitCode {
     app.connect_activate({
         let window = window.clone();
         move |app| {
-            let fresh = window.borrow().is_none();
             if let Some(w) = get_or_build(app, &window) {
-                if fresh {
-                    w.load_library();
-                }
                 w.present();
             }
         }
@@ -113,4 +115,26 @@ fn get_or_build(
 /// The file's text, or nothing if it doesn't exist or can't be read.
 fn read(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
+}
+
+/// `mm:ss`, or `h:mm:ss` from an hour up.
+pub fn format_time(d: Duration) -> String {
+    let s = d.as_secs();
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        format!("{:02}:{:02}", s / 60, s % 60)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn times_read_like_the_design() {
+        assert_eq!(format_time(Duration::from_secs(0)), "00:00");
+        assert_eq!(format_time(Duration::from_millis(134_900)), "02:14");
+        assert_eq!(format_time(Duration::from_secs(3 * 3600 + 5)), "3:00:05");
+    }
 }

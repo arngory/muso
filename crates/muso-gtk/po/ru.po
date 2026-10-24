@@ -138,3 +138,58 @@ msgstr "Удалить"
 
 msgid "Settings"
 msgstr "Настройки"
+
+msgid "Search: artist, album, title"
+msgstr "Поиск: исполнитель, альбом, трек"
+
+msgid "Tracks: {}"
+msgstr "Треков: {}"
+
+msgid "Scanning {}"
+msgstr "Сканирую {}"
+
+msgid "You can listen while it scans"
+msgstr "Можно слушать, пока идёт"
+
+msgid "Can't scan the library: {}"
+msgstr "Не удалось просканировать библиотеку: {}"
+
+msgid "Can't open the library file"
+msgstr "Не удалось открыть файл библиотеки"
+
+msgid ""
+"No music folder.\n"
+"Set one with library= in muso.conf."
+msgstr ""
+"Папка с музыкой не задана.\n"
+"Укажите её строкой library= в muso.conf."
+
+msgid "No music in {} yet"
+msgstr "В {} пока нет музыки"
+
+msgid "Unknown artist"
+msgstr "Неизвестный исполнитель"
+
+msgid "Artists"
+msgstr "Исполнители"
+
+msgid "Albums"
+msgstr "Альбомы"
+
+msgid "Tracks"
+msgstr "Треки"
+
+msgid "Nothing found"
+msgstr "Ничего не найдено"
+
+msgid "Plays next: {}"
+msgstr "Следующим: {}"
+
+msgid "Select a track in the library first"
+msgstr "Сначала выберите трек в библиотеке"
+
+msgid "Added to the queue: {}"
+msgstr "В очереди: {}"
+
+msgid "Back to the cover"
+msgstr "Вернуться к обложке"
