@@ -12,15 +12,21 @@ use muso_core::config::{Config, Theme};
 use muso_core::input::{Bindings, Command};
 use muso_core::player::{Player, PlayerEvent};
 use muso_core::queue::{Queue, Repeat};
-use muso_core::track::{self, TrackInfo};
+use muso_core::track::{self, Formats, TrackInfo};
 use muso_mpv::Mpv;
 
+use crate::i18n::{tr, tr_args};
 use crate::icons::Icon;
 use crate::keys;
 use crate::ui::{self, Ui};
 
-const OSD_TIME: Duration = Duration::from_millis(1200);
-const VOLUME_STEP_SCROLL: i32 = 2;
+/// The design's sizes, in its own units: the text is 16px (12pt) and the
+/// cover window 30 times that, 480px, at 96 dpi. Everything else is in
+/// `style.css`, in rem, so it follows these.
+const BASE_FONT_PT: f64 = 12.0;
+const WINDOW_EM: f64 = 30.0;
+/// How far the OSC grows and shrinks with the window, as mpv's does.
+const SCALE_RANGE: (f64, f64) = (0.75, 2.0);
 
 pub struct App {
     window: gtk::ApplicationWindow,
@@ -29,6 +35,7 @@ pub struct App {
     queue: RefCell<Queue<PathBuf>>,
     config: Config,
     bindings: Bindings,
+    formats: Formats,
     paused: Cell<bool>,
     volume: Cell<u8>,
     muted: Cell<bool>,
@@ -43,13 +50,17 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(app: &gtk::Application, config: Config, bindings: Bindings, player: Mpv) -> Rc<App> {
+    pub fn new(
+        app: &gtk::Application,
+        config: Config,
+        bindings: Bindings,
+        mut player: Mpv,
+    ) -> Rc<App> {
+        let formats = player.formats();
         let ui = ui::build();
         let window = gtk::ApplicationWindow::builder()
             .application(app)
             .title("muso")
-            .default_width(480)
-            .default_height(480)
             .css_classes(["muso"])
             .child(&ui.root)
             .build();
@@ -64,6 +75,7 @@ impl App {
             queue: RefCell::new(Queue::new(seed)),
             config,
             bindings,
+            formats,
             paused: Cell::new(true),
             volume: Cell::new(100),
             muted: Cell::new(false),
@@ -80,6 +92,7 @@ impl App {
             player.set_replaygain(app.config.replaygain);
             player.set_volume(app.volume.get());
         }
+        app.connect_scaling();
         app.connect_player();
         app.connect_widgets();
         app.connect_keys();
@@ -99,9 +112,9 @@ impl App {
     /// Replaces the queue with `paths` (folders are searched for music) and
     /// plays the first track.
     pub fn open(&self, paths: &[PathBuf]) {
-        let files = track::collect(paths);
+        let files = track::collect(paths, &self.formats);
         if files.is_empty() {
-            self.osd("No music found");
+            self.osd(&tr("No music found"));
             return;
         }
         self.queue.borrow_mut().replace(files);
@@ -110,7 +123,7 @@ impl App {
 
     /// Fills the queue from `library` folders in muso.conf without playing.
     pub fn load_library(&self) {
-        let files = track::collect(&self.config.library);
+        let files = track::collect(&self.config.library, &self.formats);
         if let Some(first) = files.first() {
             self.show_track(&TrackInfo::read(first));
             self.queue.borrow_mut().replace(files);
@@ -249,7 +262,7 @@ impl App {
                 }
                 self.failures.set(self.failures.get() + 1);
                 if self.failures.get() >= self.queue.borrow().len() {
-                    self.osd(&format!("Can't play: {e}"));
+                    self.osd(&tr_args("Can't play: {}", &[&e]));
                     self.stop();
                     return;
                 }
@@ -274,10 +287,10 @@ impl App {
                     return;
                 }
                 self.set_paused(!self.paused.get());
-                self.osd(if self.paused.get() {
-                    "Paused"
+                self.osd(&if self.paused.get() {
+                    tr("Paused")
                 } else {
-                    "Playing"
+                    tr("Playing")
                 });
             }
             Command::Seek(secs) => {
@@ -293,7 +306,7 @@ impl App {
             }
             Command::AddVolume(points) => {
                 self.add_volume(*points);
-                self.osd(&format!("Volume {}%", self.volume.get()));
+                self.osd(&tr_args("Volume: {}%", &[&self.volume.get()]));
             }
             Command::PlaylistPrev => {
                 let path = self.queue.borrow_mut().prev_track().cloned();
@@ -312,27 +325,35 @@ impl App {
                 self.muted.set(!self.muted.get());
                 self.player.borrow_mut().set_muted(self.muted.get());
                 self.update_volume();
-                self.osd(if self.muted.get() { "Mute" } else { "Unmute" });
+                self.osd(&if self.muted.get() {
+                    tr("Mute")
+                } else {
+                    tr("Unmute")
+                });
             }
             Command::CycleShuffle => {
                 let on = !self.queue.borrow().shuffle();
                 self.queue.borrow_mut().set_shuffle(on);
                 self.ui.shuffle.set_on(on);
                 self.refresh_upcoming();
-                self.osd(if on { "Shuffle on" } else { "Shuffle off" });
+                self.osd(&if on {
+                    tr("Shuffle on")
+                } else {
+                    tr("Shuffle off")
+                });
             }
             Command::CycleRepeat => {
                 let repeat = self.queue.borrow().repeat().cycle();
                 self.queue.borrow_mut().set_repeat(repeat);
                 self.update_repeat();
                 self.refresh_upcoming();
-                self.osd(match repeat {
-                    Repeat::Off => "Repeat off",
-                    Repeat::All => "Repeat all",
-                    Repeat::One => "Repeat one",
+                self.osd(&match repeat {
+                    Repeat::Off => tr("Repeat off"),
+                    Repeat::All => tr("Repeat all"),
+                    Repeat::One => tr("Repeat one"),
                 });
             }
-            Command::CycleOntop => self.osd("GTK 4 can't keep a window on top"),
+            Command::CycleOntop => self.osd(&tr("GTK 4 can't keep a window on top")),
             Command::Open => self.choose(false),
             Command::Help => self.ui.help.set_visible(!self.ui.help.is_visible()),
             Command::Show(_)
@@ -340,7 +361,7 @@ impl App {
             | Command::PlayNext
             | Command::Move(_)
             | Command::Remove
-            | Command::Settings => self.osd("Not in this version yet"),
+            | Command::Settings => self.osd(&tr("Not in this version yet")),
             Command::Ignore => {}
         }
     }
@@ -388,9 +409,9 @@ impl App {
     fn show_empty(&self) {
         self.ui
             .placeholder
-            .set_label("Drop music here\nor press O to open");
+            .set_label(&tr("Drop music here\nor press O to open"));
         self.ui.cover_stack.set_visible_child_name("placeholder");
-        self.ui.title.set_label("Nothing playing");
+        self.ui.title.set_label(&tr("Nothing playing"));
         self.ui.subline.set_label("");
         self.update_progress();
         self.update_play_button();
@@ -413,7 +434,7 @@ impl App {
         }));
         self.duration.set(info.duration);
 
-        let texture = track::cover(&info.path)
+        let texture = track::cover(&info.path, &self.formats)
             .and_then(|bytes| gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes)).ok());
         match texture {
             Some(t) => {
@@ -457,7 +478,7 @@ impl App {
             .set(if playing { Icon::Pause } else { Icon::Play });
         self.ui
             .play
-            .set_tooltip_text(Some(if playing { "Pause" } else { "Play" }));
+            .set_tooltip_text(Some(&if playing { tr("Pause") } else { tr("Play") }));
     }
 
     fn update_repeat(&self) {
@@ -484,7 +505,7 @@ impl App {
         }
         let osd = self.ui.osd.clone();
         let timer = self.osd_timer.clone();
-        let id = glib::timeout_add_local_once(OSD_TIME, move || {
+        let id = glib::timeout_add_local_once(self.config.osd_duration, move || {
             timer.take();
             osd.set_visible(false);
         });
@@ -499,7 +520,8 @@ impl App {
                 .xalign(0.0)
                 .build();
             let command = gtk::Label::builder()
-                .label(command.to_string())
+                .label(describe(command))
+                .css_classes(["action"])
                 .xalign(0.0)
                 .build();
             self.ui.help_grid.attach(&key, 0, row as i32, 1, 1);
@@ -571,20 +593,6 @@ impl App {
         });
         self.ui.volume_popup.add_controller(hover);
 
-        let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
-        let app = Rc::downgrade(self);
-        scroll.connect_scroll(move |_, _, dy| {
-            if let Some(app) = app.upgrade() {
-                app.add_volume(if dy < 0.0 {
-                    VOLUME_STEP_SCROLL
-                } else {
-                    -VOLUME_STEP_SCROLL
-                });
-            }
-            glib::Propagation::Stop
-        });
-        self.ui.volume.add_controller(scroll);
-
         let popup = self.ui.volume_popup.clone();
         self.ui.volume.connect_destroy(move |_| popup.unparent());
 
@@ -622,6 +630,46 @@ impl App {
         self.ui.osd.set_visible(false);
     }
 
+    /// The window's text size, and with it every size in `style.css`,
+    /// follows the display's text scaling and grows with the window.
+    fn connect_scaling(self: &Rc<Self>) {
+        let provider = gtk::CssProvider::new();
+        gtk::style_context_add_provider_for_display(
+            &gtk::prelude::WidgetExt::display(&self.window),
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+        );
+        let (w, h) = window_size_px();
+        self.window.set_default_size(w, h);
+        let update = {
+            let window = self.window.clone();
+            move || {
+                let (base, _) = window_size_px();
+                let size = window.default_width().min(window.default_height());
+                let scale = if size > 0 {
+                    (size as f64 / base as f64).clamp(SCALE_RANGE.0, SCALE_RANGE.1)
+                } else {
+                    1.0
+                };
+                // load_from_string needs GTK 4.12; muso supports 4.10.
+                #[allow(deprecated)]
+                provider.load_from_data(&format!(
+                    "window.muso {{ font-size: {:.2}pt; }}",
+                    BASE_FONT_PT * scale
+                ));
+            }
+        };
+        update();
+        let update = Rc::new(update);
+        let u = update.clone();
+        self.window.connect_default_width_notify(move |_| u());
+        let u = update.clone();
+        self.window.connect_default_height_notify(move |_| u());
+        if let Some(settings) = gtk::Settings::default() {
+            settings.connect_gtk_xft_dpi_notify(move |_| update());
+        }
+    }
+
     fn connect_keys(self: &Rc<Self>) {
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -646,6 +694,33 @@ impl App {
             }
         });
         self.window.add_controller(keys);
+
+        // The mouse wheel goes through input.conf too, as WHEEL_UP and
+        // WHEEL_DOWN. Touchpads scroll in fractions; a whole step is one press.
+        let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+        let app = Rc::downgrade(self);
+        let pending = Cell::new(0.0);
+        scroll.connect_scroll(move |scroll, _, dy| {
+            let Some(app) = app.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
+            let state = scroll.current_event_state();
+            pending.set(pending.get() + dy);
+            while pending.get().abs() >= 1.0 {
+                let (wheel, step) = if pending.get() < 0.0 {
+                    ("WHEEL_UP", 1.0)
+                } else {
+                    ("WHEEL_DOWN", -1.0)
+                };
+                pending.set(pending.get() + step);
+                let name = keys::with_modifiers(wheel, state);
+                if let Some(command) = app.bindings.get(&name).cloned() {
+                    app.run(&command);
+                }
+            }
+            glib::Propagation::Stop
+        });
+        self.window.add_controller(scroll);
     }
 
     /// The OSC shows while the pointer moves over the window and hides
@@ -752,6 +827,52 @@ impl App {
         action("open", |app| app.choose(false));
         action("open-folder", |app| app.choose(true));
         action("help", |app| app.ui.help.set_visible(true));
+    }
+}
+
+/// The cover window's default size in pixels: [`WINDOW_EM`] at the
+/// display's text scale (GNOME's "Large text" and the like raise its dpi).
+fn window_size_px() -> (i32, i32) {
+    let dpi = gtk::Settings::default()
+        .map(|s| s.gtk_xft_dpi())
+        .filter(|d| *d > 0)
+        .map_or(96.0, |d| d as f64 / 1024.0);
+    let px = (WINDOW_EM * BASE_FONT_PT * dpi / 72.0).round() as i32;
+    (px, px)
+}
+
+/// What a command does, for the key help.
+fn describe(command: &Command) -> String {
+    use muso_core::input::{Direction, View};
+    let signed = |n: f64| {
+        if n < 0.0 {
+            format!("\u{2212}{}", -n)
+        } else {
+            format!("+{n}")
+        }
+    };
+    match command {
+        Command::CyclePause => tr("Play or pause"),
+        Command::Seek(secs) => tr_args("Seek {} s", &[&signed(*secs)]),
+        Command::AddVolume(points) => tr_args("Volume {}", &[&signed(*points as f64)]),
+        Command::PlaylistPrev => tr("Previous track"),
+        Command::PlaylistNext => tr("Next track"),
+        Command::CycleMute => tr("Mute"),
+        Command::CycleShuffle => tr("Shuffle"),
+        Command::CycleRepeat => tr("Repeat"),
+        Command::CycleOntop => tr("Always on top"),
+        Command::Show(View::Playlists) => tr("Playlists"),
+        Command::Show(View::Library) => tr("Library"),
+        Command::Show(View::Queue) => tr("Queue"),
+        Command::Search => tr("Search"),
+        Command::Open => tr("Open files…"),
+        Command::PlayNext => tr("Play next"),
+        Command::Move(Direction::Up) => tr("Move up"),
+        Command::Move(Direction::Down) => tr("Move down"),
+        Command::Remove => tr("Remove"),
+        Command::Settings => tr("Settings"),
+        Command::Help => tr("Keyboard shortcuts"),
+        Command::Ignore => String::new(),
     }
 }
 

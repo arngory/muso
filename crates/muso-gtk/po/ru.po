@@ -1,0 +1,140 @@
+# Russian translation of muso.
+msgid ""
+msgstr ""
+"Project-Id-Version: muso\n"
+"Language: ru\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Shuffle"
+msgstr "Перемешать"
+
+msgid "Previous"
+msgstr "Предыдущий"
+
+msgid "Play"
+msgstr "Играть"
+
+msgid "Pause"
+msgstr "Пауза"
+
+msgid "Next"
+msgstr "Следующий"
+
+msgid "Repeat"
+msgstr "Повтор"
+
+msgid "Volume"
+msgstr "Громкость"
+
+msgid "Menu"
+msgstr "Меню"
+
+msgid "Open files…"
+msgstr "Открыть файлы…"
+
+msgid "Open folder…"
+msgstr "Открыть папку…"
+
+msgid "Keyboard shortcuts"
+msgstr "Клавиши"
+
+msgid "Quit"
+msgstr "Выйти"
+
+msgid ""
+"Drop music here\n"
+"or press O to open"
+msgstr ""
+"Перетащите музыку сюда\n"
+"или нажмите O"
+
+msgid "Nothing playing"
+msgstr "Ничего не играет"
+
+msgid "No music found"
+msgstr "Музыка не найдена"
+
+msgid "Can't play: {}"
+msgstr "Не удаётся воспроизвести: {}"
+
+msgid "Paused"
+msgstr "Пауза"
+
+msgid "Playing"
+msgstr "Играет"
+
+msgid "Volume: {}%"
+msgstr "Громкость: {}%"
+
+msgid "Mute"
+msgstr "Без звука"
+
+msgid "Unmute"
+msgstr "Звук включён"
+
+msgid "Shuffle on"
+msgstr "Перемешивание: вкл"
+
+msgid "Shuffle off"
+msgstr "Перемешивание: выкл"
+
+msgid "Repeat off"
+msgstr "Повтор: выкл"
+
+msgid "Repeat all"
+msgstr "Повтор: всё"
+
+msgid "Repeat one"
+msgstr "Повтор: один трек"
+
+msgid "GTK 4 can't keep a window on top"
+msgstr "GTK 4 не умеет держать окно поверх других"
+
+msgid "Not in this version yet"
+msgstr "Пока нет в этой версии"
+
+msgid "Play or pause"
+msgstr "Играть / пауза"
+
+msgid "Seek {} s"
+msgstr "Перемотка {} с"
+
+msgid "Volume {}"
+msgstr "Громкость {}"
+
+msgid "Previous track"
+msgstr "Предыдущий трек"
+
+msgid "Next track"
+msgstr "Следующий трек"
+
+msgid "Always on top"
+msgstr "Поверх всех окон"
+
+msgid "Playlists"
+msgstr "Плейлисты"
+
+msgid "Library"
+msgstr "Библиотека"
+
+msgid "Queue"
+msgstr "Очередь"
+
+msgid "Search"
+msgstr "Поиск"
+
+msgid "Play next"
+msgstr "Играть следующим"
+
+msgid "Move up"
+msgstr "Переместить выше"
+
+msgid "Move down"
+msgstr "Переместить ниже"
+
+msgid "Remove"
+msgstr "Удалить"
+
+msgid "Settings"
+msgstr "Настройки"

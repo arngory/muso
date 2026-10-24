@@ -3,47 +3,66 @@
 use gtk::gdk::{Key, ModifierType};
 use gtk::glib::translate::IntoGlib;
 
+/// GDK names that mpv spells differently. Every other named key is the GDK
+/// name in capitals (`Left` is `LEFT`, `F5` is `F5`, `KP_Enter` is
+/// `KP_ENTER`).
+const MPV_NAMES: &[(&str, &str)] = &[
+    ("space", "SPACE"),
+    ("numbersign", "SHARP"),
+    ("Escape", "ESC"),
+    ("Return", "ENTER"),
+    ("ISO_Enter", "ENTER"),
+    ("ISO_Left_Tab", "TAB"),
+    ("BackSpace", "BS"),
+    ("Delete", "DEL"),
+    ("Insert", "INS"),
+    ("Page_Up", "PGUP"),
+    ("Page_Down", "PGDWN"),
+    ("KP_Delete", "KP_DEL"),
+    ("KP_Decimal", "KP_DEC"),
+    ("AudioPlay", "PLAY"),
+    ("AudioPause", "PAUSE"),
+    ("AudioStop", "STOP"),
+    ("AudioNext", "NEXT"),
+    ("AudioPrev", "PREV"),
+    ("AudioMute", "MUTE"),
+    ("AudioRaiseVolume", "VOLUME_UP"),
+    ("AudioLowerVolume", "VOLUME_DOWN"),
+];
+
 /// The mpv name of a key press, or `None` for keys that are only modifiers.
 pub fn name(key: Key, state: ModifierType) -> Option<String> {
-    let special = match key {
-        Key::space => Some("SPACE"),
-        Key::Return | Key::ISO_Enter => Some("ENTER"),
-        Key::KP_Enter => Some("KP_ENTER"),
-        Key::Escape => Some("ESC"),
-        Key::Tab | Key::ISO_Left_Tab => Some("TAB"),
-        Key::BackSpace => Some("BS"),
-        Key::Delete | Key::KP_Delete => Some("DEL"),
-        Key::Insert => Some("INS"),
-        Key::Home => Some("HOME"),
-        Key::End => Some("END"),
-        Key::Page_Up => Some("PGUP"),
-        Key::Page_Down => Some("PGDWN"),
-        Key::Left => Some("LEFT"),
-        Key::Right => Some("RIGHT"),
-        Key::Up => Some("UP"),
-        Key::Down => Some("DOWN"),
-        Key::numbersign => Some("SHARP"),
-        Key::AudioPlay => Some("PLAY"),
-        Key::AudioPause => Some("PAUSE"),
-        Key::AudioStop => Some("STOP"),
-        Key::AudioNext => Some("NEXT"),
-        Key::AudioPrev => Some("PREV"),
-        Key::AudioMute => Some("MUTE"),
-        Key::AudioRaiseVolume => Some("VOLUME_UP"),
-        Key::AudioLowerVolume => Some("VOLUME_DOWN"),
-        _ => None,
-    };
-    let function = (Key::F1.into_glib()..=Key::F24.into_glib())
-        .contains(&key.into_glib())
-        .then(|| format!("F{}", key.into_glib() - Key::F1.into_glib() + 1));
-    let (base, printable) = match (special, function) {
-        (Some(s), _) => (s.to_owned(), false),
-        (None, Some(f)) => (f, false),
+    let gdk_name = key.name()?;
+    let alias = MPV_NAMES
+        .iter()
+        .find(|(gdk, _)| *gdk == gdk_name.as_str())
+        .map(|(_, mpv)| *mpv);
+    let keypad = gdk_name.starts_with("KP_");
+    let char = key.to_unicode().filter(|c| !c.is_control() && !keypad);
+    let (base, printable) = match (alias, char) {
+        (Some(mpv), _) => (mpv.to_owned(), false),
+        (None, Some(c)) => (c.to_string(), true),
+        (None, None) if is_modifier(key) => return None,
         (None, None) => {
-            let c = key.to_unicode().filter(|c| !c.is_control())?;
-            (c.to_string(), true)
+            let upper = gdk_name.to_ascii_uppercase();
+            // mpv writes keypad digits without the underscore: KP0, not KP_0.
+            match upper.strip_prefix("KP_") {
+                Some(d) if d.len() == 1 && d.as_bytes()[0].is_ascii_digit() => {
+                    (format!("KP{d}"), false)
+                }
+                _ => (upper, false),
+            }
         }
     };
+    Some(with_modifiers_for(&base, state, printable))
+}
+
+/// `base` (an mpv key name such as `WHEEL_UP`) with the held modifiers.
+pub fn with_modifiers(base: &str, state: ModifierType) -> String {
+    with_modifiers_for(base, state, false)
+}
+
+fn with_modifiers_for(base: &str, state: ModifierType, printable: bool) -> String {
     let mut name = String::new();
     // A printable key already carries Shift in its character (`<`, `A`).
     if state.contains(ModifierType::SHIFT_MASK) && !printable {
@@ -58,8 +77,13 @@ pub fn name(key: Key, state: ModifierType) -> Option<String> {
     if state.contains(ModifierType::SUPER_MASK) {
         name.push_str("Meta+");
     }
-    name.push_str(&base);
-    Some(name)
+    name.push_str(base);
+    name
+}
+
+fn is_modifier(key: Key) -> bool {
+    (Key::Shift_L.into_glib()..=Key::Hyper_R.into_glib()).contains(&key.into_glib())
+        || key == Key::ISO_Level3_Shift
 }
 
 #[cfg(test)]
@@ -83,6 +107,11 @@ mod tests {
             Some("Ctrl+,")
         );
         assert_eq!(name(Key::F5, none).as_deref(), Some("F5"));
+        assert_eq!(name(Key::Page_Up, none).as_deref(), Some("PGUP"));
+        assert_eq!(name(Key::KP_1, none).as_deref(), Some("KP1"));
+        assert_eq!(name(Key::KP_Enter, none).as_deref(), Some("KP_ENTER"));
+        assert_eq!(name(Key::a, none).as_deref(), Some("a"));
+        assert_eq!(name(Key::A, ModifierType::SHIFT_MASK).as_deref(), Some("A"));
         assert_eq!(name(Key::Shift_L, ModifierType::SHIFT_MASK), None);
     }
 }

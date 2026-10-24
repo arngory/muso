@@ -1,14 +1,14 @@
 //! The cover window's widgets: the cover, the OSC on top of it, the OSD and
-//! the key help. Only layout lives here; [`crate::app`] fills them in.
+//! the key help. Only structure lives here: sizes and spacing are in
+//! `style.css`, relative to the font size, and [`crate::app`] fills the
+//! widgets in.
 
 use gtk::prelude::*;
 use gtk::{Align, Orientation, gio};
 
+use crate::i18n::tr;
 use crate::icons::{Icon, IconView};
 use crate::slider::Slider;
-
-/// Width of the transport block, as in the design's overlay variant.
-const CONTROLS_WIDTH: i32 = 236;
 
 pub struct Ui {
     pub root: gtk::Overlay,
@@ -50,7 +50,7 @@ pub struct ToggleIcon {
 impl ToggleIcon {
     fn new(icon: Icon, tooltip: &str) -> Self {
         let overlay = gtk::Overlay::new();
-        overlay.set_child(Some(&IconView::new(icon, 16).area));
+        overlay.set_child(Some(&IconView::new(icon, "small").area));
         let dot = gtk::Box::builder()
             .css_classes(["dot"])
             .halign(Align::Start)
@@ -119,9 +119,7 @@ pub fn build() -> Ui {
     let subline = label(&["subline"]);
     let info = gtk::Box::builder()
         .orientation(Orientation::Vertical)
-        .spacing(2)
-        .margin_start(2)
-        .margin_end(2)
+        .css_classes(["info"])
         .build();
     info.append(&title);
     info.append(&subline);
@@ -131,17 +129,25 @@ pub fn build() -> Ui {
         .css_classes(["time", "remaining"])
         .build();
     let progress = Slider::new(Orientation::Horizontal, false);
-    let progress_row = gtk::Box::builder().spacing(8).build();
+    let progress_row = gtk::Box::builder().css_classes(["progress-row"]).build();
     progress_row.append(&elapsed);
     progress_row.append(&progress.area);
     progress_row.append(&remaining);
 
-    let shuffle = ToggleIcon::new(Icon::Shuffle, "Shuffle");
-    let prev = icon_button(&IconView::new(Icon::Prev, 18).area, "Previous", &["wide"]);
-    let play_icon = IconView::new(Icon::Play, 22);
-    let play = icon_button(&play_icon.area, "Play", &["play"]);
-    let next = icon_button(&IconView::new(Icon::Next, 18).area, "Next", &["wide"]);
-    let repeat = ToggleIcon::new(Icon::Repeat, "Repeat");
+    let shuffle = ToggleIcon::new(Icon::Shuffle, &tr("Shuffle"));
+    let prev = icon_button(
+        &IconView::new(Icon::Prev, "medium").area,
+        &tr("Previous"),
+        &["wide"],
+    );
+    let play_icon = IconView::new(Icon::Play, "large");
+    let play = icon_button(&play_icon.area, &tr("Play"), &["play"]);
+    let next = icon_button(
+        &IconView::new(Icon::Next, "medium").area,
+        &tr("Next"),
+        &["wide"],
+    );
+    let repeat = ToggleIcon::new(Icon::Repeat, &tr("Repeat"));
     let repeat_one = gtk::Label::builder()
         .label("1")
         .css_classes(["repeat-one"])
@@ -158,19 +164,18 @@ pub fn build() -> Ui {
 
     let transport = gtk::Box::builder()
         .orientation(Orientation::Vertical)
-        .spacing(2)
-        .width_request(CONTROLS_WIDTH)
+        .css_classes(["transport"])
         .build();
     transport.append(&progress_row);
     transport.append(&buttons);
 
-    let volume_icon = IconView::new(Icon::Volume, 16);
-    let volume = icon_button(&volume_icon.area, "Volume", &[]);
+    let volume_icon = IconView::new(Icon::Volume, "small");
+    let volume = icon_button(&volume_icon.area, &tr("Volume"), &[]);
     let volume_value = gtk::Label::builder().css_classes(["value"]).build();
     let volume_slider = Slider::new(Orientation::Vertical, true);
     let volume_box = gtk::Box::builder()
         .orientation(Orientation::Vertical)
-        .spacing(8)
+        .css_classes(["volume-box"])
         .build();
     volume_box.append(&volume_value);
     volume_box.append(&volume_slider.area);
@@ -184,14 +189,14 @@ pub fn build() -> Ui {
     volume_popup.set_parent(&volume);
 
     let menu_model = gio::Menu::new();
-    menu_model.append(Some("Open files…"), Some("win.open"));
-    menu_model.append(Some("Open folder…"), Some("win.open-folder"));
-    menu_model.append(Some("Keyboard shortcuts"), Some("win.help"));
-    menu_model.append(Some("Quit"), Some("app.quit"));
+    menu_model.append(Some(&tr("Open files…")), Some("win.open"));
+    menu_model.append(Some(&tr("Open folder…")), Some("win.open-folder"));
+    menu_model.append(Some(&tr("Keyboard shortcuts")), Some("win.help"));
+    menu_model.append(Some(&tr("Quit")), Some("app.quit"));
     let menu = gtk::MenuButton::builder()
-        .child(&IconView::new(Icon::Menu, 16).area)
+        .child(&IconView::new(Icon::Menu, "small").area)
         .menu_model(&menu_model)
-        .tooltip_text("Menu")
+        .tooltip_text(tr("Menu"))
         .focusable(false)
         .css_classes(["icon"])
         .build();
@@ -216,7 +221,6 @@ pub fn build() -> Ui {
 
     let osc_panel = gtk::Box::builder()
         .orientation(Orientation::Vertical)
-        .spacing(8)
         .css_classes(["osc"])
         .build();
     osc_panel.append(&info);
@@ -226,30 +230,23 @@ pub fn build() -> Ui {
         .transition_type(gtk::RevealerTransitionType::Crossfade)
         .transition_duration(150)
         .valign(Align::End)
-        .margin_start(12)
-        .margin_end(12)
-        .margin_bottom(12)
+        .css_classes(["osc-revealer"])
         .build();
 
     let osd = gtk::Label::builder()
         .css_classes(["osd"])
         .halign(Align::Start)
         .valign(Align::Start)
-        .margin_start(12)
-        .margin_top(12)
         .can_target(false)
         .visible(false)
         .build();
 
-    let help_grid = gtk::Grid::builder()
-        .column_spacing(18)
-        .row_spacing(2)
-        .build();
+    let help_grid = gtk::Grid::new();
     let help_scroll = gtk::ScrolledWindow::builder()
         .child(&help_grid)
         .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_width(true)
         .propagate_natural_height(true)
-        .max_content_height(360)
         .build();
     let help = gtk::Box::builder()
         .css_classes(["help"])

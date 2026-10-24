@@ -2,9 +2,11 @@
 //! libmpv.
 
 mod app;
+mod i18n;
 mod icons;
 mod keys;
 mod slider;
+mod svg;
 mod ui;
 
 use std::path::{Path, PathBuf};

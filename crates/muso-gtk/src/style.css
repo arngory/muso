@@ -1,5 +1,10 @@
-/* Black and white, as on the design canvas. The light theme only swaps
-   colours; sizes live in the first block. */
+/* Black and white, as on the design canvas. Sizes are in em, so they
+   follow the window's text size, which follows the display's text scaling
+   and the window size (see connect_scaling in app.rs). At 1em = 16px they
+   are the design's pixels. An element that sets its own font-size measures
+   its other sizes in that font, so its em values differ from the design's
+   pixels / 16. Hairline borders stay 1px. The light theme only swaps
+   colours. */
 
 window.muso {
   background: #000;
@@ -11,37 +16,80 @@ window.muso {
   background: #1c1c1c;
   color: #8f8f8f;
   font-family: "JetBrains Mono", monospace;
-  font-size: 12px;
+  font-size: 0.75em;
+  padding: 1.3333em;
+}
+
+.osc-revealer {
+  margin: 0 0.75em 0.75em;
 }
 
 .osc {
   background: rgba(0, 0, 0, 0.8);
-  padding: 14px 14px 4px;
+  padding: 0.875em 0.875em 0.25em;
+  border-spacing: 0.5em;
+}
+
+.osc .info {
+  border-spacing: 0.125em;
+  margin: 0 0.125em;
 }
 
 .osc .title {
-  font-size: 15px;
+  font-size: 0.9375em;
   font-weight: 600;
 }
 
 .osc .subline {
-  font-size: 12px;
+  font-size: 0.75em;
   color: #a8a8a8;
+}
+
+.osc .transport {
+  min-width: 14.75em;
+  border-spacing: 0.125em;
+}
+
+.osc .progress-row {
+  border-spacing: 0.5em;
 }
 
 .osc .time {
   font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
+  font-size: 0.6875em;
 }
 
-.osc .time.remaining,
+.osc .time.emaining,
 .volume-popup .value {
   color: #a8a8a8;
 }
 
+.slider.horizontal {
+  min-height: 0.75em;
+}
+
+.slider.vertical {
+  min-width: 0.75em;
+}
+
+.glyph.small {
+  min-width: 1em;
+  min-height: 1em;
+}
+
+.glyph.medium {
+  min-width: 1.125em;
+  min-height: 1.125em;
+}
+
+.glyph.large {
+  min-width: 1.375em;
+  min-height: 1.375em;
+}
+
 button.icon {
-  min-width: 36px;
-  min-height: 44px;
+  min-width: 2.25em;
+  min-height: 2.75em;
   padding: 0;
   margin: 0;
   border: none;
@@ -52,41 +100,36 @@ button.icon {
 }
 
 button.icon.wide {
-  min-width: 40px;
+  min-width: 2.5em;
 }
 
 button.icon.play {
-  min-width: 48px;
+  min-width: 3em;
 }
 
 button.icon.inactive {
   color: #8a8a8a;
 }
 
-button.icon.open {
-  background: #fff;
-  color: #000;
-}
-
 .dot {
-  min-width: 4px;
-  min-height: 4px;
-  margin: 0 0 5px 16px;
-  border-radius: 2px;
+  min-width: 0.25em;
+  min-height: 0.25em;
+  margin: 0 0 0.3125em 1em;
+  border-radius: 0.125em;
   background: currentColor;
 }
 
 .repeat-one {
   font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: 0.5625em;
   font-weight: 500;
-  margin: 9px 5px 0 0;
+  margin: 1em 0.5556em 0 0;
 }
 
 popover.volume-popup > contents {
-  min-width: 36px;
-  min-height: 132px;
-  padding: 10px 0;
+  min-width: 2.25em;
+  min-height: 8.25em;
+  padding: 0.625em 0;
   border: 1px solid #333;
   border-radius: 0;
   background: rgba(0, 0, 0, 0.92);
@@ -94,9 +137,13 @@ popover.volume-popup > contents {
   color: #fff;
 }
 
+popover.volume-popup .volume-box {
+  border-spacing: 0.5em;
+}
+
 popover.volume-popup .value {
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: 0.625em;
 }
 
 popover.menu > contents {
@@ -105,13 +152,14 @@ popover.menu > contents {
   background: rgba(0, 0, 0, 0.92);
   box-shadow: none;
   color: #fff;
-  padding: 4px 0;
+  padding: 0.25em 0;
 }
 
 popover.menu modelbutton {
   border-radius: 0;
-  min-height: 32px;
-  padding: 0 14px;
+  font-size: 0.875em;
+  min-height: 2.2857em;
+  padding: 0 1em;
 }
 
 popover.menu modelbutton:hover {
@@ -120,22 +168,33 @@ popover.menu modelbutton:hover {
 }
 
 .osd {
-  background: rgba(0, 0, 0, 0.8);
-  padding: 6px 10px;
   font-family: "JetBrains Mono", monospace;
-  font-size: 12px;
+  font-size: 0.75em;
+  margin: 1em;
+  padding: 0.5em 0.8333em;
+  background: rgba(0, 0, 0, 0.8);
 }
 
 .help {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.75em;
+  margin: 2em;
+  padding: 1.1667em 1.5em;
   background: rgba(0, 0, 0, 0.92);
   border: 1px solid #333;
-  padding: 14px 18px;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 12px;
+}
+
+.help label {
+  padding: 0.0833em 0;
 }
 
 .help .key {
   color: #a8a8a8;
+  padding-right: 1.5em;
+}
+
+tooltip {
+  font-size: 0.75em;
 }
 
 /* Light theme */
@@ -155,7 +214,7 @@ window.muso.light {
 }
 
 .light .osc .subline,
-.light .osc .time.remaining,
+.light .osc .time.emaining,
 .light .volume-popup .value,
 .light .help .key {
   color: #555;
@@ -167,11 +226,6 @@ window.muso.light {
 
 .light button.icon.inactive {
   color: #6b6b6b;
-}
-
-.light button.icon.open {
-  background: #000;
-  color: #fff;
 }
 
 .light popover.volume-popup > contents,

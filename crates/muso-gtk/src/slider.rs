@@ -16,24 +16,26 @@ pub struct Slider {
 }
 
 impl Slider {
-    /// `knob` draws a 10px dot at the value. Horizontal sliders fill from
-    /// the left, vertical ones from the bottom.
+    /// `knob` draws a round knob at the value. Horizontal sliders fill from
+    /// the left, vertical ones from the bottom. CSS sets the thickness of
+    /// the widget (`.slider`); the line and knob are drawn in proportion to
+    /// it, in the CSS colour, with the unfilled part at a quarter opacity.
     pub fn new(orientation: gtk::Orientation, knob: bool) -> Self {
         let vertical = orientation == gtk::Orientation::Vertical;
-        let area = gtk::DrawingArea::new();
-        if vertical {
-            area.set_content_width(12);
-            area.set_vexpand(true);
-        } else {
-            // Taller than the line so it's easy to hit.
-            area.set_content_height(12);
-            area.set_hexpand(true);
-        }
+        let area = gtk::DrawingArea::builder()
+            .css_classes(["slider", if vertical { "vertical" } else { "horizontal" }])
+            .hexpand(!vertical)
+            .vexpand(vertical)
+            .build();
         area.set_cursor_from_name(Some("pointer"));
         let value = Rc::new(Cell::new(0.0));
         let shown = value.clone();
         area.set_draw_func(move |area, cr, w, h| {
             let (w, h) = (w as f64, h as f64);
+            // The widget is thicker than the line so it's easy to hit.
+            let thickness = if vertical { w } else { h };
+            let line = thickness / 6.0;
+            let radius = thickness * 5.0 / 12.0;
             let c = area.color();
             let (r, g, b, a) = (
                 c.red() as f64,
@@ -44,25 +46,25 @@ impl Slider {
             let v = shown.get();
             cr.set_source_rgba(r, g, b, a * 0.25);
             if vertical {
-                cr.rectangle(w / 2.0 - 1.0, 0.0, 2.0, h);
+                cr.rectangle((w - line) / 2.0, 0.0, line, h);
             } else {
-                cr.rectangle(0.0, h / 2.0 - 1.0, w, 2.0);
+                cr.rectangle(0.0, (h - line) / 2.0, w, line);
             }
             let _ = cr.fill();
             cr.set_source_rgba(r, g, b, a);
             if vertical {
-                cr.rectangle(w / 2.0 - 1.0, h * (1.0 - v), 2.0, h * v);
+                cr.rectangle((w - line) / 2.0, h * (1.0 - v), line, h * v);
             } else {
-                cr.rectangle(0.0, h / 2.0 - 1.0, w * v, 2.0);
+                cr.rectangle(0.0, (h - line) / 2.0, w * v, line);
             }
             let _ = cr.fill();
             if knob {
                 let (x, y) = if vertical {
-                    (w / 2.0, (h * (1.0 - v)).clamp(5.0, h - 5.0))
+                    (w / 2.0, (h * (1.0 - v)).clamp(radius, h - radius))
                 } else {
-                    ((w * v).clamp(5.0, w - 5.0), h / 2.0)
+                    ((w * v).clamp(radius, w - radius), h / 2.0)
                 };
-                cr.arc(x, y, 5.0, 0.0, std::f64::consts::TAU);
+                cr.arc(x, y, radius, 0.0, std::f64::consts::TAU);
                 let _ = cr.fill();
             }
         });

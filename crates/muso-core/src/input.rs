@@ -13,31 +13,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-/// The built-in bindings, written as an `input.conf`.
-pub const DEFAULT_INPUT_CONF: &str = "\
-SPACE cycle pause
-LEFT seek -5
-RIGHT seek 5
-UP add volume 2
-DOWN add volume -2
-< playlist-prev
-> playlist-next
-m cycle mute
-s cycle shuffle
-r cycle repeat
-t cycle ontop
-l show playlists
-b show library
-q show queue
-/ search
-o open
-n play-next
-Shift+UP move up
-Shift+DOWN move down
-DEL remove
-Ctrl+, settings
-? help
-";
+/// The built-in bindings: `input.conf` at the root of this crate.
+pub const DEFAULT_INPUT_CONF: &str = include_str!("../input.conf");
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
@@ -150,53 +127,14 @@ impl fmt::Display for Command {
     }
 }
 
-/// mpv's names for keys that aren't a single character.
-const SPECIAL_KEYS: &[&str] = &[
-    "SPACE",
-    "ENTER",
-    "ESC",
-    "TAB",
-    "BS",
-    "DEL",
-    "INS",
-    "HOME",
-    "END",
-    "PGUP",
-    "PGDWN",
-    "LEFT",
-    "RIGHT",
-    "UP",
-    "DOWN",
-    "SHARP",
-    "KP0",
-    "KP1",
-    "KP2",
-    "KP3",
-    "KP4",
-    "KP5",
-    "KP6",
-    "KP7",
-    "KP8",
-    "KP9",
-    "KP_DEC",
-    "KP_ENTER",
-    "PLAY",
-    "PAUSE",
-    "PLAYPAUSE",
-    "STOP",
-    "NEXT",
-    "PREV",
-    "MUTE",
-    "VOLUME_UP",
-    "VOLUME_DOWN",
-];
-
 /// Modifiers in the order mpv writes them.
 const MODIFIERS: &[&str] = &["Shift", "Ctrl", "Alt", "Meta"];
 
 /// Spells a key the way mpv does, so `ctrl+shift+left`, `Shift+Ctrl+LEFT`
-/// and `Shift+Ctrl+left` are the same binding. Modifiers and special key
-/// names ignore case; single characters keep theirs (`a` and `A` differ).
+/// and `Shift+Ctrl+left` are the same binding. As in mpv, modifiers and
+/// named keys (`SPACE`, `F5`, `KP_ENTER`: anything longer than one
+/// character) ignore case and are written in capitals; a single character
+/// keeps its case, so `a` and `A` differ.
 pub fn normalize_key(key: &str) -> String {
     let mut held = [false; 4];
     let mut rest = key;
@@ -220,29 +158,12 @@ pub fn normalize_key(key: &str) -> String {
         out.push_str(name);
         out.push('+');
     }
-    let special = (rest.chars().count() > 1)
-        .then(|| {
-            SPECIAL_KEYS
-                .iter()
-                .find(|k| k.eq_ignore_ascii_case(rest))
-                .copied()
-                .or_else(|| function_key(rest))
-        })
-        .flatten();
-    match special {
-        Some(name) => out.push_str(name),
-        None => out.push_str(rest),
+    if rest.chars().count() > 1 {
+        out.push_str(&rest.to_ascii_uppercase());
+    } else {
+        out.push_str(rest);
     }
     out
-}
-
-/// `F1` to `F24` in any case.
-fn function_key(key: &str) -> Option<&'static str> {
-    const NAMES: [&str; 24] = [
-        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "F13", "F14",
-        "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24",
-    ];
-    NAMES.iter().find(|n| n.eq_ignore_ascii_case(key)).copied()
 }
 
 /// A line of `input.conf` that was skipped.
@@ -336,7 +257,10 @@ mod tests {
         assert_eq!(b.get("LEFT"), Some(&Command::Seek(-5.0)));
         assert_eq!(b.get("Ctrl+,"), Some(&Command::Settings));
         assert_eq!(b.get("Shift+DOWN"), Some(&Command::Move(Direction::Down)));
-        assert_eq!(b.iter().count(), DEFAULT_INPUT_CONF.lines().count());
+        let lines = DEFAULT_INPUT_CONF
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.starts_with('#'));
+        assert_eq!(b.iter().count(), lines.count());
     }
 
     #[test]

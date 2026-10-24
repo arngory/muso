@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use muso_core::config::ReplayGain;
 use muso_core::player::{Player, PlayerError, PlayerEvent};
+use muso_core::track::Formats;
 
 const OBSERVE_TIME_POS: u64 = 1;
 const OBSERVE_PAUSE: u64 = 2;
@@ -101,6 +102,55 @@ impl Mpv {
         }
         self.wakeup = Some(writer);
         Ok(reader)
+    }
+
+    /// What mpv plays and takes as cover art: its `audio-exts`, `image-exts`
+    /// and `cover-art-whitelist`, or mpv's defaults for them (`formats.conf`)
+    /// on versions before 0.39, which don't have these options.
+    pub fn formats(&mut self) -> Formats {
+        let read = |mpv: &mut Mpv, name: &CStr| mpv.string_property(name).map(|v| split_list(&v));
+        match read(self, c"audio-exts") {
+            Some(audio) => Formats {
+                audio,
+                image: read(self, c"image-exts").unwrap_or_default(),
+                cover_names: read(self, c"cover-art-whitelist").unwrap_or_default(),
+            },
+            None => {
+                let defaults = include_str!("formats.conf");
+                let list = |name: &str| {
+                    defaults
+                        .lines()
+                        .find_map(|l| l.strip_prefix(name)?.strip_prefix('='))
+                        .map(split_list)
+                        .unwrap_or_default()
+                };
+                Formats {
+                    audio: list("audio-exts"),
+                    image: list("image-exts"),
+                    cover_names: list("cover-art-whitelist"),
+                }
+            }
+        }
+    }
+
+    fn string_property(&mut self, name: &CStr) -> Option<String> {
+        let mut value: *mut std::ffi::c_char = ptr::null_mut();
+        let r = unsafe {
+            ffi::mpv_get_property(
+                self.handle.as_ptr(),
+                name.as_ptr(),
+                ffi::MPV_FORMAT_STRING,
+                &mut value as *mut _ as *mut c_void,
+            )
+        };
+        if r < 0 || value.is_null() {
+            return None;
+        }
+        let s = unsafe { CStr::from_ptr(value) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { ffi::mpv_free(value as *mut c_void) };
+        Some(s)
     }
 
     fn set_option(&mut self, name: &str, value: &str) -> Result<(), PlayerError> {
@@ -304,6 +354,15 @@ fn error_string(code: c_int) -> String {
 
 fn cstring(s: &str) -> Result<CString, PlayerError> {
     CString::new(s).map_err(|_| PlayerError(format!("{s:?} has a NUL byte")))
+}
+
+/// mpv's string lists come comma-separated.
+fn split_list(s: &str) -> Vec<String> {
+    s.split(',')
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .map(String::from)
+        .collect()
 }
 
 fn yes_no(b: bool) -> &'static str {

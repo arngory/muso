@@ -8,6 +8,7 @@ pub struct mpv_handle {
     _private: [u8; 0],
 }
 
+pub const MPV_FORMAT_STRING: c_int = 1;
 pub const MPV_FORMAT_FLAG: c_int = 3;
 pub const MPV_FORMAT_DOUBLE: c_int = 5;
 
@@ -48,6 +49,7 @@ pub struct mpv_event_end_file {
 unsafe extern "C" {
     pub fn mpv_client_api_version() -> std::ffi::c_ulong;
     pub fn mpv_error_string(error: c_int) -> *const c_char;
+    pub fn mpv_free(data: *mut c_void);
     pub fn mpv_create() -> *mut mpv_handle;
     pub fn mpv_initialize(ctx: *mut mpv_handle) -> c_int;
     pub fn mpv_terminate_destroy(ctx: *mut mpv_handle);

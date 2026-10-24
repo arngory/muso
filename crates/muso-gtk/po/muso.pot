@@ -1,0 +1,139 @@
+# Messages of the muso GTK client. Copy to <language>.po (or use msginit),
+# translate, and the next build includes it.
+# The {} in a message is filled in by the program; keep it.
+msgid ""
+msgstr ""
+"Project-Id-Version: muso\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Shuffle"
+msgstr ""
+
+msgid "Previous"
+msgstr ""
+
+msgid "Play"
+msgstr ""
+
+msgid "Pause"
+msgstr ""
+
+msgid "Next"
+msgstr ""
+
+msgid "Repeat"
+msgstr ""
+
+msgid "Volume"
+msgstr ""
+
+msgid "Menu"
+msgstr ""
+
+msgid "Open files…"
+msgstr ""
+
+msgid "Open folder…"
+msgstr ""
+
+msgid "Keyboard shortcuts"
+msgstr ""
+
+msgid "Quit"
+msgstr ""
+
+msgid ""
+"Drop music here\n"
+"or press O to open"
+msgstr ""
+
+msgid "Nothing playing"
+msgstr ""
+
+msgid "No music found"
+msgstr ""
+
+msgid "Can't play: {}"
+msgstr ""
+
+msgid "Paused"
+msgstr ""
+
+msgid "Playing"
+msgstr ""
+
+msgid "Volume: {}%"
+msgstr ""
+
+msgid "Mute"
+msgstr ""
+
+msgid "Unmute"
+msgstr ""
+
+msgid "Shuffle on"
+msgstr ""
+
+msgid "Shuffle off"
+msgstr ""
+
+msgid "Repeat off"
+msgstr ""
+
+msgid "Repeat all"
+msgstr ""
+
+msgid "Repeat one"
+msgstr ""
+
+msgid "GTK 4 can't keep a window on top"
+msgstr ""
+
+msgid "Not in this version yet"
+msgstr ""
+
+msgid "Play or pause"
+msgstr ""
+
+msgid "Seek {} s"
+msgstr ""
+
+msgid "Volume {}"
+msgstr ""
+
+msgid "Previous track"
+msgstr ""
+
+msgid "Next track"
+msgstr ""
+
+msgid "Always on top"
+msgstr ""
+
+msgid "Playlists"
+msgstr ""
+
+msgid "Library"
+msgstr ""
+
+msgid "Queue"
+msgstr ""
+
+msgid "Search"
+msgstr ""
+
+msgid "Play next"
+msgstr ""
+
+msgid "Move up"
+msgstr ""
+
+msgid "Move down"
+msgstr ""
+
+msgid "Remove"
+msgstr ""
+
+msgid "Settings"
+msgstr ""

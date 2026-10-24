@@ -8,16 +8,42 @@ use lofty::file::TaggedFile;
 use lofty::picture::PictureType;
 use lofty::prelude::*;
 
-/// File extensions treated as music, lowercase.
-const AUDIO_EXTENSIONS: &[&str] = &[
-    "aac", "aif", "aiff", "ape", "dff", "dsf", "flac", "m4a", "mka", "mp3", "mpc", "oga", "ogg",
-    "opus", "tak", "wav", "wv",
-];
+/// Which files are music and which images are covers. The core has no list
+/// of its own: the playback backend knows what it can play (on desktop,
+/// mpv's `audio-exts`, `image-exts` and `cover-art-whitelist`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Formats {
+    /// Extensions of playable files, without the dot.
+    pub audio: Vec<String>,
+    /// Extensions of images that can be a cover.
+    pub image: Vec<String>,
+    /// File names, without extension, of images next to the music that
+    /// count as its cover, most preferred first.
+    pub cover_names: Vec<String>,
+}
 
-/// Image files next to the music that count as its cover, in order of
-/// preference, without extension and lowercase.
-const COVER_NAMES: &[&str] = &["cover", "folder", "front", "album"];
-const COVER_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+impl Formats {
+    pub fn is_audio(&self, path: &Path) -> bool {
+        has_extension(path, &self.audio)
+    }
+
+    /// The rank of `path` as a cover image, lower is better.
+    fn cover_rank(&self, path: &Path) -> Option<usize> {
+        if !has_extension(path, &self.image) {
+            return None;
+        }
+        let stem = path.file_stem()?.to_string_lossy();
+        self.cover_names
+            .iter()
+            .position(|n| n.eq_ignore_ascii_case(&stem))
+    }
+}
+
+fn has_extension(path: &Path, extensions: &[String]) -> bool {
+    path.extension()
+        .map(|e| e.to_string_lossy())
+        .is_some_and(|e| extensions.iter().any(|x| x.eq_ignore_ascii_case(&e)))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TrackInfo {
@@ -73,10 +99,10 @@ impl TrackInfo {
 }
 
 /// The cover of the track at `path` as encoded image bytes: the front cover
-/// in its tags, any other picture in them, or an image such as `cover.jpg`
-/// in the same folder.
-pub fn cover(path: &Path) -> Option<Vec<u8>> {
-    embedded_cover(path).or_else(|| folder_cover(path.parent()?))
+/// in its tags, any other picture in them, or an image in the same folder
+/// named in [`Formats::cover_names`].
+pub fn cover(path: &Path, formats: &Formats) -> Option<Vec<u8>> {
+    embedded_cover(path).or_else(|| folder_cover(path.parent()?, formats))
 }
 
 fn embedded_cover(path: &Path) -> Option<Vec<u8>> {
@@ -90,21 +116,11 @@ fn embedded_cover(path: &Path) -> Option<Vec<u8>> {
         .map(|p| p.data().to_vec())
 }
 
-fn folder_cover(dir: &Path) -> Option<Vec<u8>> {
+fn folder_cover(dir: &Path, formats: &Formats) -> Option<Vec<u8>> {
     let mut best: Option<(usize, PathBuf)> = None;
     for entry in fs::read_dir(dir).ok()?.flatten() {
         let path = entry.path();
-        let (Some(stem), Some(ext)) = (path.file_stem(), path.extension()) else {
-            continue;
-        };
-        let (stem, ext) = (
-            stem.to_string_lossy().to_lowercase(),
-            ext.to_string_lossy().to_lowercase(),
-        );
-        if !COVER_EXTENSIONS.contains(&ext.as_str()) {
-            continue;
-        }
-        let Some(rank) = COVER_NAMES.iter().position(|n| *n == stem) else {
+        let Some(rank) = formats.cover_rank(&path) else {
             continue;
         };
         if best.as_ref().is_none_or(|(r, _)| rank < *r) {
@@ -118,21 +134,15 @@ fn tag(file: &TaggedFile) -> Option<&lofty::tag::Tag> {
     file.primary_tag().or_else(|| file.first_tag())
 }
 
-pub fn is_audio(path: &Path) -> bool {
-    path.extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .is_some_and(|e| AUDIO_EXTENSIONS.contains(&e.as_str()))
-}
-
 /// The audio files among `paths`, with folders replaced by the audio files
 /// inside them (recursively, sorted by path). Files given directly are kept
 /// in the order given, whatever their extension.
-pub fn collect(paths: &[PathBuf]) -> Vec<PathBuf> {
+pub fn collect(paths: &[PathBuf], formats: &Formats) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for path in paths {
         if path.is_dir() {
             let mut found = Vec::new();
-            walk(path, &mut found);
+            walk(path, formats, &mut found);
             found.sort();
             files.extend(found);
         } else if path.is_file() {
@@ -142,7 +152,7 @@ pub fn collect(paths: &[PathBuf]) -> Vec<PathBuf> {
     files
 }
 
-fn walk(dir: &Path, found: &mut Vec<PathBuf>) {
+fn walk(dir: &Path, formats: &Formats, found: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -150,8 +160,8 @@ fn walk(dir: &Path, found: &mut Vec<PathBuf>) {
         let path = entry.path();
         // file_type doesn't follow symlinks, so linked folders can't loop.
         match entry.file_type() {
-            Ok(t) if t.is_dir() => walk(&path, found),
-            Ok(_) if is_audio(&path) => found.push(path),
+            Ok(t) if t.is_dir() => walk(&path, formats, found),
+            Ok(_) if formats.is_audio(&path) => found.push(path),
             _ => {}
         }
     }
@@ -163,6 +173,15 @@ mod tests {
     use lofty::config::WriteOptions;
     use lofty::picture::{MimeType, Picture};
     use lofty::tag::{Tag, TagType};
+
+    fn formats() -> Formats {
+        let list = |s: &str| s.split(',').map(String::from).collect();
+        Formats {
+            audio: list("flac,mp3,wav"),
+            image: list("jpg,png"),
+            cover_names: list("cover,folder"),
+        }
+    }
 
     struct TempDir(PathBuf);
 
@@ -223,7 +242,7 @@ mod tests {
         assert_eq!(info.album.as_deref(), Some("Album"));
         assert_eq!(info.track_number, Some(3));
         assert_eq!(info.duration, Some(Duration::from_secs(1)));
-        assert_eq!(cover(&path).as_deref(), Some(&b"png bytes"[..]));
+        assert_eq!(cover(&path, &formats()).as_deref(), Some(&b"png bytes"[..]));
     }
 
     #[test]
@@ -238,7 +257,7 @@ mod tests {
         let info = TrackInfo::read(&path);
         assert_eq!(info.title, None);
         assert_eq!(info.display_title(), "Some Track");
-        assert_eq!(cover(&path).as_deref(), Some(&b"cover"[..]));
+        assert_eq!(cover(&path, &formats()).as_deref(), Some(&b"cover"[..]));
     }
 
     #[test]
@@ -248,7 +267,7 @@ mod tests {
         fs::write(&path, b"not audio").unwrap();
         let info = TrackInfo::read(&path);
         assert_eq!(info.display_title(), "broken");
-        assert_eq!(cover(&path), None);
+        assert_eq!(cover(&path, &formats()), None);
     }
 
     #[test]
@@ -267,7 +286,7 @@ mod tests {
         let loose = dir.0.join("notes.txt");
         fs::write(&loose, b"").unwrap();
 
-        let files = collect(&[loose.clone(), album.clone()]);
+        let files = collect(&[loose.clone(), album.clone()], &formats());
         assert_eq!(
             files,
             [

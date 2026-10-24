@@ -136,3 +136,16 @@ fn bad_options_are_reported() {
         .unwrap();
     assert!(err.0.contains("no-such-option"), "{err}");
 }
+
+#[test]
+fn knows_what_counts_as_music_and_covers() {
+    let formats = player().formats();
+    for ext in ["flac", "mp3", "opus"] {
+        assert!(formats.audio.iter().any(|e| e == ext), "{formats:?}");
+    }
+    assert!(formats.image.iter().any(|e| e == "jpg"), "{formats:?}");
+    assert!(
+        formats.cover_names.iter().any(|n| n == "cover"),
+        "{formats:?}"
+    );
+}
