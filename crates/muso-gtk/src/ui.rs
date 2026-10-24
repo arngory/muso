@@ -17,6 +17,11 @@ pub struct Ui {
     pub cover_stack: gtk::Stack,
     pub osc: gtk::Revealer,
     pub osc_panel: gtk::Box,
+    pub info: gtk::Box,
+    pub controls: gtk::CenterBox,
+    pub transport: gtk::Box,
+    pub right: gtk::Box,
+    pub library: gtk::Button,
     pub title: gtk::Label,
     pub subline: gtk::Label,
     pub elapsed: gtk::Label,
@@ -189,6 +194,8 @@ pub fn build() -> Ui {
     volume_popup.set_parent(&volume);
 
     let menu_model = gio::Menu::new();
+    menu_model.append(Some(&tr("Library")), Some("win.library"));
+    menu_model.append(Some(&tr("Queue")), Some("win.queue"));
     menu_model.append(Some(&tr("Open files…")), Some("win.open"));
     menu_model.append(Some(&tr("Open folder…")), Some("win.open-folder"));
     menu_model.append(Some(&tr("Keyboard shortcuts")), Some("win.help"));
@@ -215,7 +222,14 @@ pub fn build() -> Ui {
     right.append(&volume);
     right.append(&menu);
 
+    let library = icon_button(
+        &IconView::new(Icon::Library, "small").area,
+        &tr("Library"),
+        &[],
+    );
+    library.set_valign(Align::End);
     let controls = gtk::CenterBox::new();
+    controls.set_start_widget(Some(&library));
     controls.set_center_widget(Some(&transport));
     controls.set_end_widget(Some(&right));
 
@@ -259,8 +273,6 @@ pub fn build() -> Ui {
     let root = gtk::Overlay::new();
     root.set_child(Some(&cover_stack));
     root.add_overlay(&osc);
-    root.add_overlay(&osd);
-    root.add_overlay(&help);
 
     Ui {
         root,
@@ -269,6 +281,11 @@ pub fn build() -> Ui {
         cover_stack,
         osc,
         osc_panel,
+        info,
+        controls,
+        transport,
+        right,
+        library,
         title,
         subline,
         elapsed,

@@ -187,21 +187,32 @@ msgstr ""
     /// catalog, and the catalogs have nothing left over.
     #[test]
     fn catalogs_match_the_code() {
-        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut used = std::collections::BTreeSet::new();
-        for entry in std::fs::read_dir(src).unwrap().flatten() {
-            if entry.file_name() == "i18n.rs" {
-                continue;
+        let mut files = Vec::new();
+        let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                if entry.file_type().unwrap().is_dir() {
+                    dirs.push(entry.path());
+                } else if entry.file_name() != "i18n.rs" {
+                    files.push(entry.path());
+                }
             }
-            let code = std::fs::read_to_string(entry.path()).unwrap();
-            for call in ["tr(\"", "tr_args(\""] {
+        }
+        let mut used = std::collections::BTreeSet::new();
+        for file in files {
+            let code = std::fs::read_to_string(file).unwrap();
+            for call in ["tr(", "tr_args("] {
                 let mut rest = code.as_str();
                 while let Some(at) = rest.find(call) {
                     let whole_word = !rest[..at]
                         .chars()
                         .next_back()
                         .is_some_and(|c| c.is_alphanumeric() || c == '_');
-                    let piece = &rest[at + call.len()..];
+                    rest = &rest[at + call.len()..];
+                    // rustfmt may break the line before the message.
+                    let Some(piece) = rest.trim_start().strip_prefix('"') else {
+                        continue;
+                    };
                     // No escaped quotes in muso's messages.
                     let end = piece.find('"').unwrap();
                     if whole_word {

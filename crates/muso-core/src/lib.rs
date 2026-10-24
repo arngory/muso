@@ -7,6 +7,12 @@
 
 pub mod config;
 pub mod input;
+pub mod library;
 pub mod player;
 pub mod queue;
 pub mod track;
+#[cfg(target_os = "linux")]
+pub mod watch;
+
+#[cfg(test)]
+mod testutil;

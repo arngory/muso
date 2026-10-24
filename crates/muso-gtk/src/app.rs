@@ -1,36 +1,76 @@
 //! The player window: wires the core's queue and config, mpv and the widgets
-//! together.
+//! together. It has two modes: the album cover with the OSC on top
+//! ([`crate::ui`]), and the library with the controls in a bar
+//! ([`crate::library_ui`], wired up in [`library`]).
+
+mod library;
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use muso_core::config::{Config, Theme};
-use muso_core::input::{Bindings, Command};
+use muso_core::input::{Bindings, Command, View};
+use muso_core::library::{Album, Artist, Found, Library};
 use muso_core::player::{Player, PlayerEvent};
 use muso_core::queue::{Queue, Repeat};
 use muso_core::track::{self, Formats, TrackInfo};
 use muso_mpv::Mpv;
 
+use crate::covers::Covers;
 use crate::i18n::{tr, tr_args};
 use crate::icons::Icon;
-use crate::keys;
+use crate::library_ui::{self, LibraryUi};
 use crate::ui::{self, Ui};
+use crate::wakeup;
+use crate::{format_time, keys, scanner};
 
-/// The design's sizes, in its own units: the text is 16px (12pt) and the
-/// cover window 30 times that, 480px, at 96 dpi. Everything else is in
-/// `style.css`, in rem, so it follows these.
+/// The design's sizes, in its own units: the text is 16px (12pt), the
+/// cover window 30 times that (480px at 96 dpi) and the library window 75
+/// by 45 (1200 by 720px). Everything else is in `style.css`, in em, so it
+/// follows these.
 const BASE_FONT_PT: f64 = 12.0;
-const WINDOW_EM: f64 = 30.0;
-/// How far the OSC grows and shrinks with the window, as mpv's does.
+const COVER_EM: (f64, f64) = (30.0, 30.0);
+const LIBRARY_EM: (f64, f64) = (75.0, 45.0);
+/// How far the OSC grows and shrinks with the cover window, as mpv's does.
 const SCALE_RANGE: (f64, f64) = (0.75, 2.0);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Cover,
+    Library,
+}
 
 pub struct App {
     window: gtk::ApplicationWindow,
     ui: Ui,
+    lib_ui: LibraryUi,
+    modes: gtk::Stack,
+    mode: Cell<Mode>,
+    /// The window size each mode had when last left.
+    cover_size: Cell<(i32, i32)>,
+    library_size: Cell<(i32, i32)>,
+    /// `None` if the library file can't be opened.
+    library: RefCell<Option<Library>>,
+    roots: Vec<PathBuf>,
+    covers: Covers,
+    scan: RefCell<Option<mpsc::Receiver<scanner::Update>>>,
+    last_refresh: Cell<i64>,
+    /// What the library view shows, to map rows back to data.
+    artists: RefCell<Vec<Artist>>,
+    albums: RefCell<Vec<(Album, gtk::Button)>>,
+    album: RefCell<Option<Album>>,
+    /// The album whose tracks the browser lists.
+    tracks_of: RefCell<Option<Album>>,
+    found: RefCell<Found>,
+    /// The last album tile clicked and when, to tell a double click.
+    last_click: RefCell<Option<(Album, i64)>>,
+    scale_css: gtk::CssProvider,
+    scale_pt: RefCell<String>,
     player: RefCell<Mpv>,
     queue: RefCell<Queue<PathBuf>>,
     config: Config,
@@ -58,12 +98,30 @@ impl App {
     ) -> Rc<App> {
         let formats = player.formats();
         let ui = ui::build();
+        let lib_ui = library_ui::build();
+        // Sized by the mode shown, so the cover window can be small.
+        let modes = gtk::Stack::builder()
+            .hhomogeneous(false)
+            .vhomogeneous(false)
+            .build();
+        modes.add_named(&ui.root, Some("cover"));
+        modes.add_named(&lib_ui.root, Some("library"));
+        let top = gtk::Overlay::builder().child(&modes).build();
+        top.add_overlay(&ui.osd);
+        top.add_overlay(&ui.help);
         let window = gtk::ApplicationWindow::builder()
             .application(app)
             .title("muso")
             .css_classes(["muso"])
-            .child(&ui.root)
+            .child(&top)
             .build();
+        let roots = if config.library.is_empty() {
+            glib::user_special_dir(glib::UserDirectory::Music)
+                .into_iter()
+                .collect()
+        } else {
+            config.library.clone()
+        };
         if config.theme == Theme::Light {
             window.add_css_class("light");
         }
@@ -71,6 +129,24 @@ impl App {
         let app = Rc::new(App {
             window,
             ui,
+            lib_ui,
+            modes,
+            mode: Cell::new(Mode::Cover),
+            cover_size: Cell::new(em_px(COVER_EM)),
+            library_size: Cell::new(em_px(LIBRARY_EM)),
+            library: RefCell::default(),
+            roots,
+            covers: Covers::new(formats.clone()),
+            scan: RefCell::default(),
+            last_refresh: Cell::new(0),
+            artists: RefCell::default(),
+            albums: RefCell::default(),
+            album: RefCell::default(),
+            tracks_of: RefCell::default(),
+            found: RefCell::default(),
+            last_click: RefCell::default(),
+            scale_css: gtk::CssProvider::new(),
+            scale_pt: RefCell::default(),
             player: RefCell::new(player),
             queue: RefCell::new(Queue::new(seed)),
             config,
@@ -99,9 +175,14 @@ impl App {
         app.connect_pointer();
         app.connect_drop();
         app.add_actions();
+        app.connect_library();
         app.fill_help();
         app.show_empty();
         app.update_volume();
+        app.load_library();
+        if app.config.start_view == muso_core::config::StartView::Library {
+            app.set_mode(Mode::Library);
+        }
         app
     }
 
@@ -117,17 +198,14 @@ impl App {
             self.osd(&tr("No music found"));
             return;
         }
-        self.queue.borrow_mut().replace(files);
-        self.play_index(0);
+        self.replace_queue(files, 0);
     }
 
-    /// Fills the queue from `library` folders in muso.conf without playing.
-    pub fn load_library(&self) {
-        let files = track::collect(&self.config.library, &self.formats);
-        if let Some(first) = files.first() {
-            self.show_track(&TrackInfo::read(first));
-            self.queue.borrow_mut().replace(files);
-        }
+    /// Replaces the queue with `files` and plays the one at `start`.
+    fn replace_queue(&self, files: Vec<PathBuf>, start: usize) {
+        self.queue.borrow_mut().replace(files);
+        self.play_index(start);
+        self.queue_changed();
     }
 
     // Playback
@@ -146,10 +224,12 @@ impl App {
         }
         self.set_paused(false);
         self.show_track(&TrackInfo::read(path));
+        self.mark_current();
     }
 
     fn stop(&self) {
         self.queue.borrow_mut().stop();
+        self.mark_current();
         self.set_paused(true);
         self.position.set(Duration::ZERO);
         self.update_progress();
@@ -178,34 +258,9 @@ impl App {
     }
 
     fn connect_player(self: &Rc<Self>) {
-        let socket = match self.player.borrow_mut().wakeup_socket() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("muso: can't watch mpv events: {e}");
-                return;
-            }
-        };
-        let socket = match gio::Socket::from_fd(socket.into()) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("muso: can't watch mpv events: {e}");
-                return;
-            }
-        };
-        // Draining it below must not wait for more.
-        socket.set_blocking(false);
         let app = Rc::downgrade(self);
-        let source = gio::prelude::SocketExtManual::create_source(
-            &socket,
-            glib::IOCondition::IN,
-            None::<&gio::Cancellable>,
-            Some("mpv events"),
-            glib::Priority::DEFAULT,
-            move |socket, _| {
-                let mut buf = [0u8; 64];
-                while matches!(socket.receive(&mut buf, None::<&gio::Cancellable>), Ok(n) if n > 0)
-                {
-                }
+        let watched = self.player.borrow_mut().wakeup_socket().and_then(|socket| {
+            wakeup::watch(socket, "mpv events", move || {
                 let Some(app) = app.upgrade() else {
                     return glib::ControlFlow::Break;
                 };
@@ -217,9 +272,12 @@ impl App {
                     }
                 }
                 glib::ControlFlow::Continue
-            },
-        );
-        source.attach(None);
+            })
+            .map_err(std::io::Error::other)
+        });
+        if let Err(e) = watched {
+            eprintln!("muso: can't watch mpv events: {e}");
+        }
     }
 
     fn handle(&self, event: PlayerEvent) {
@@ -231,6 +289,7 @@ impl App {
                     let path = self.queue.borrow_mut().track_ended().cloned();
                     if let Some(path) = path {
                         self.show_track(&TrackInfo::read(&path));
+                        self.mark_current();
                     }
                 }
                 self.refresh_upcoming();
@@ -356,9 +415,11 @@ impl App {
             Command::CycleOntop => self.osd(&tr("GTK 4 can't keep a window on top")),
             Command::Open => self.choose(false),
             Command::Help => self.ui.help.set_visible(!self.ui.help.is_visible()),
-            Command::Show(_)
-            | Command::Search
-            | Command::PlayNext
+            Command::Show(View::Library) => self.toggle_section(library_ui::SECTION_LIBRARY),
+            Command::Show(View::Queue) => self.toggle_section(library_ui::SECTION_QUEUE),
+            Command::Search => self.start_search(),
+            Command::PlayNext => self.play_selected_next(),
+            Command::Show(View::Playlists)
             | Command::Move(_)
             | Command::Remove
             | Command::Settings => self.osd(&tr("Not in this version yet")),
@@ -434,6 +495,7 @@ impl App {
         }));
         self.duration.set(info.duration);
 
+        self.covers.show(&info.path, &self.lib_ui.thumb);
         let texture = track::cover(&info.path, &self.formats)
             .and_then(|bytes| gdk::Texture::from_bytes(&glib::Bytes::from_owned(bytes)).ok());
         match texture {
@@ -631,35 +693,23 @@ impl App {
     }
 
     /// The window's text size, and with it every size in `style.css`,
-    /// follows the display's text scaling and grows with the window.
+    /// follows the display's text scaling and, in the cover mode, grows
+    /// with the window.
     fn connect_scaling(self: &Rc<Self>) {
-        let provider = gtk::CssProvider::new();
         gtk::style_context_add_provider_for_display(
             &gtk::prelude::WidgetExt::display(&self.window),
-            &provider,
+            &self.scale_css,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
         );
-        let (w, h) = window_size_px();
+        let (w, h) = self.cover_size.get();
         self.window.set_default_size(w, h);
-        let update = {
-            let window = self.window.clone();
-            move || {
-                let (base, _) = window_size_px();
-                let size = window.default_width().min(window.default_height());
-                let scale = if size > 0 {
-                    (size as f64 / base as f64).clamp(SCALE_RANGE.0, SCALE_RANGE.1)
-                } else {
-                    1.0
-                };
-                // load_from_string needs GTK 4.12; muso supports 4.10.
-                #[allow(deprecated)]
-                provider.load_from_data(&format!(
-                    "window.muso {{ font-size: {:.2}pt; }}",
-                    BASE_FONT_PT * scale
-                ));
+        self.update_scale();
+        let app = Rc::downgrade(self);
+        let update = move || {
+            if let Some(app) = app.upgrade() {
+                app.update_scale();
             }
         };
-        update();
         let update = Rc::new(update);
         let u = update.clone();
         self.window.connect_default_width_notify(move |_| u());
@@ -667,6 +717,31 @@ impl App {
         self.window.connect_default_height_notify(move |_| u());
         if let Some(settings) = gtk::Settings::default() {
             settings.connect_gtk_xft_dpi_notify(move |_| update());
+        }
+    }
+
+    fn update_scale(&self) {
+        let scale = match self.mode.get() {
+            Mode::Cover => {
+                let (base, _) = em_px(COVER_EM);
+                let size = self
+                    .window
+                    .default_width()
+                    .min(self.window.default_height());
+                if size > 0 {
+                    (size as f64 / base as f64).clamp(SCALE_RANGE.0, SCALE_RANGE.1)
+                } else {
+                    1.0
+                }
+            }
+            Mode::Library => 1.0,
+        };
+        let pt = format!("{:.2}", BASE_FONT_PT * scale);
+        if self.scale_pt.replace(pt.clone()) != pt {
+            // load_from_string needs GTK 4.12; muso supports 4.10.
+            #[allow(deprecated)]
+            self.scale_css
+                .load_from_data(&format!("window.muso {{ font-size: {pt}pt; }}"));
         }
     }
 
@@ -684,6 +759,14 @@ impl App {
             if name == "ESC" && app.ui.help.is_visible() {
                 app.ui.help.set_visible(false);
                 return glib::Propagation::Stop;
+            }
+            // Typed text goes to the search field, not to the bindings.
+            if app.typing() {
+                return if app.search_key(&name) {
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                };
             }
             match app.bindings.get(&name).cloned() {
                 Some(command) => {
@@ -827,23 +910,31 @@ impl App {
         action("open", |app| app.choose(false));
         action("open-folder", |app| app.choose(true));
         action("help", |app| app.ui.help.set_visible(true));
+        action("library", |app| {
+            app.set_mode(Mode::Library);
+            app.show_section(library_ui::SECTION_LIBRARY);
+        });
+        action("queue", |app| {
+            app.set_mode(Mode::Library);
+            app.show_section(library_ui::SECTION_QUEUE);
+        });
     }
 }
 
-/// The cover window's default size in pixels: [`WINDOW_EM`] at the
-/// display's text scale (GNOME's "Large text" and the like raise its dpi).
-fn window_size_px() -> (i32, i32) {
+/// A size in the design's em in pixels, at the display's text scale
+/// (GNOME's "Large text" and the like raise its dpi).
+fn em_px((w, h): (f64, f64)) -> (i32, i32) {
     let dpi = gtk::Settings::default()
         .map(|s| s.gtk_xft_dpi())
         .filter(|d| *d > 0)
         .map_or(96.0, |d| d as f64 / 1024.0);
-    let px = (WINDOW_EM * BASE_FONT_PT * dpi / 72.0).round() as i32;
-    (px, px)
+    let px = |em: f64| (em * BASE_FONT_PT * dpi / 72.0).round() as i32;
+    (px(w), px(h))
 }
 
 /// What a command does, for the key help.
 fn describe(command: &Command) -> String {
-    use muso_core::input::{Direction, View};
+    use muso_core::input::Direction;
     let signed = |n: f64| {
         if n < 0.0 {
             format!("\u{2212}{}", -n)
@@ -873,27 +964,5 @@ fn describe(command: &Command) -> String {
         Command::Settings => tr("Settings"),
         Command::Help => tr("Keyboard shortcuts"),
         Command::Ignore => String::new(),
-    }
-}
-
-/// `mm:ss`, or `h:mm:ss` from an hour up.
-fn format_time(d: Duration) -> String {
-    let s = d.as_secs();
-    if s >= 3600 {
-        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
-    } else {
-        format!("{:02}:{:02}", s / 60, s % 60)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn times_read_like_the_design() {
-        assert_eq!(format_time(Duration::from_secs(0)), "00:00");
-        assert_eq!(format_time(Duration::from_millis(134_900)), "02:14");
-        assert_eq!(format_time(Duration::from_secs(3 * 3600 + 5)), "3:00:05");
     }
 }
