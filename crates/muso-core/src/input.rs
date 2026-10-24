@@ -150,6 +150,101 @@ impl fmt::Display for Command {
     }
 }
 
+/// mpv's names for keys that aren't a single character.
+const SPECIAL_KEYS: &[&str] = &[
+    "SPACE",
+    "ENTER",
+    "ESC",
+    "TAB",
+    "BS",
+    "DEL",
+    "INS",
+    "HOME",
+    "END",
+    "PGUP",
+    "PGDWN",
+    "LEFT",
+    "RIGHT",
+    "UP",
+    "DOWN",
+    "SHARP",
+    "KP0",
+    "KP1",
+    "KP2",
+    "KP3",
+    "KP4",
+    "KP5",
+    "KP6",
+    "KP7",
+    "KP8",
+    "KP9",
+    "KP_DEC",
+    "KP_ENTER",
+    "PLAY",
+    "PAUSE",
+    "PLAYPAUSE",
+    "STOP",
+    "NEXT",
+    "PREV",
+    "MUTE",
+    "VOLUME_UP",
+    "VOLUME_DOWN",
+];
+
+/// Modifiers in the order mpv writes them.
+const MODIFIERS: &[&str] = &["Shift", "Ctrl", "Alt", "Meta"];
+
+/// Spells a key the way mpv does, so `ctrl+shift+left`, `Shift+Ctrl+LEFT`
+/// and `Shift+Ctrl+left` are the same binding. Modifiers and special key
+/// names ignore case; single characters keep theirs (`a` and `A` differ).
+pub fn normalize_key(key: &str) -> String {
+    let mut held = [false; 4];
+    let mut rest = key;
+    'strip: loop {
+        for (i, name) in MODIFIERS.iter().enumerate() {
+            let len = name.len() + 1;
+            let is_prefix = rest.len() > len
+                && rest.is_char_boundary(len)
+                && rest[..len - 1].eq_ignore_ascii_case(name)
+                && rest.as_bytes()[len - 1] == b'+';
+            if is_prefix {
+                held[i] = true;
+                rest = &rest[len..];
+                continue 'strip;
+            }
+        }
+        break;
+    }
+    let mut out = String::new();
+    for (name, _) in MODIFIERS.iter().zip(held).filter(|(_, h)| *h) {
+        out.push_str(name);
+        out.push('+');
+    }
+    let special = (rest.chars().count() > 1)
+        .then(|| {
+            SPECIAL_KEYS
+                .iter()
+                .find(|k| k.eq_ignore_ascii_case(rest))
+                .copied()
+                .or_else(|| function_key(rest))
+        })
+        .flatten();
+    match special {
+        Some(name) => out.push_str(name),
+        None => out.push_str(rest),
+    }
+    out
+}
+
+/// `F1` to `F24` in any case.
+fn function_key(key: &str) -> Option<&'static str> {
+    const NAMES: [&str; 24] = [
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "F13", "F14",
+        "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24",
+    ];
+    NAMES.iter().find(|n| n.eq_ignore_ascii_case(key)).copied()
+}
+
 /// A line of `input.conf` that was skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputError {
@@ -205,10 +300,10 @@ impl Bindings {
             let command = command.split_once(" #").map_or(command, |(c, _)| c);
             match command.parse() {
                 Ok(Command::Ignore) => {
-                    self.0.remove(key);
+                    self.0.remove(&normalize_key(key));
                 }
                 Ok(command) => {
-                    self.0.insert(key.to_owned(), command);
+                    self.0.insert(normalize_key(key), command);
                 }
                 Err(message) => errors.push(InputError {
                     line: n + 1,
@@ -219,8 +314,9 @@ impl Bindings {
         (self, errors)
     }
 
+    /// The command bound to `key`, in any spelling [`normalize_key`] accepts.
     pub fn get(&self, key: &str) -> Option<&Command> {
-        self.0.get(key)
+        self.0.get(&normalize_key(key))
     }
 
     /// Every binding, sorted by key, for the help screen.
@@ -260,6 +356,26 @@ mod tests {
         let lines: Vec<usize> = errors.iter().map(|e| e.line).collect();
         assert_eq!(lines, [1, 2, 3]);
         assert_eq!(b.get("SPACE"), Some(&Command::CyclePause));
+    }
+
+    #[test]
+    fn keys_are_spelled_like_mpv() {
+        assert_eq!(normalize_key("space"), "SPACE");
+        assert_eq!(normalize_key("ctrl+shift+left"), "Shift+Ctrl+LEFT");
+        assert_eq!(normalize_key("Alt+Ctrl+a"), "Ctrl+Alt+a");
+        assert_eq!(normalize_key("A"), "A");
+        assert_eq!(normalize_key("Ctrl++"), "Ctrl++");
+        assert_eq!(normalize_key("+"), "+");
+        assert_eq!(normalize_key("f12"), "F12");
+        assert_eq!(normalize_key("Ctrl+ж"), "Ctrl+ж");
+    }
+
+    #[test]
+    fn bindings_match_any_spelling() {
+        let (b, errors) = Bindings::parse("ctrl+shift+right playlist-next\nspace ignore\n");
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(b.get("Shift+Ctrl+RIGHT"), Some(&Command::PlaylistNext));
+        assert_eq!(b.get("SPACE"), None);
     }
 
     #[test]

@@ -1,0 +1,193 @@
+/* Black and white, as on the design canvas. The light theme only swaps
+   colours; sizes live in the first block. */
+
+window.muso {
+  background: #000;
+  color: #fff;
+  font-family: Inter, sans-serif;
+}
+
+.cover-placeholder {
+  background: #1c1c1c;
+  color: #8f8f8f;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.osc {
+  background: rgba(0, 0, 0, 0.8);
+  padding: 14px 14px 4px;
+}
+
+.osc .title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.osc .subline {
+  font-size: 12px;
+  color: #a8a8a8;
+}
+
+.osc .time {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.osc .time.remaining,
+.volume-popup .value {
+  color: #a8a8a8;
+}
+
+button.icon {
+  min-width: 36px;
+  min-height: 44px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: #fff;
+}
+
+button.icon.wide {
+  min-width: 40px;
+}
+
+button.icon.play {
+  min-width: 48px;
+}
+
+button.icon.inactive {
+  color: #8a8a8a;
+}
+
+button.icon.open {
+  background: #fff;
+  color: #000;
+}
+
+.dot {
+  min-width: 4px;
+  min-height: 4px;
+  margin: 0 0 5px 16px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.repeat-one {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  font-weight: 500;
+  margin: 9px 5px 0 0;
+}
+
+popover.volume-popup > contents {
+  min-width: 36px;
+  min-height: 132px;
+  padding: 10px 0;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.92);
+  box-shadow: none;
+  color: #fff;
+}
+
+popover.volume-popup .value {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+}
+
+popover.menu > contents {
+  border: 1px solid #333;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.92);
+  box-shadow: none;
+  color: #fff;
+  padding: 4px 0;
+}
+
+popover.menu modelbutton {
+  border-radius: 0;
+  min-height: 32px;
+  padding: 0 14px;
+}
+
+popover.menu modelbutton:hover {
+  background: #fff;
+  color: #000;
+}
+
+.osd {
+  background: rgba(0, 0, 0, 0.8);
+  padding: 6px 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.help {
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid #333;
+  padding: 14px 18px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.help .key {
+  color: #a8a8a8;
+}
+
+/* Light theme */
+
+window.muso.light {
+  background: #fff;
+  color: #000;
+}
+
+.light .cover-placeholder {
+  background: #e6e6e6;
+  color: #6b6b6b;
+}
+
+.light .osc {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.light .osc .subline,
+.light .osc .time.remaining,
+.light .volume-popup .value,
+.light .help .key {
+  color: #555;
+}
+
+.light button.icon {
+  color: #000;
+}
+
+.light button.icon.inactive {
+  color: #6b6b6b;
+}
+
+.light button.icon.open {
+  background: #000;
+  color: #fff;
+}
+
+.light popover.volume-popup > contents,
+.light popover.menu > contents,
+.light .help {
+  background: #fff;
+  border-color: #ccc;
+  color: #000;
+}
+
+.light popover.menu modelbutton:hover {
+  background: #000;
+  color: #fff;
+}
+
+.light .osd {
+  background: rgba(255, 255, 255, 0.88);
+  color: #000;
+}

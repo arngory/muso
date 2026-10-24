@@ -1,0 +1,11 @@
+[package]
+name = "muso-mpv"
+description = "libmpv playback backend for the muso music player"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+muso-core = { path = "../muso-core" }

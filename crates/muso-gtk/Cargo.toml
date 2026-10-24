@@ -1,0 +1,17 @@
+[package]
+name = "muso-gtk"
+description = "GTK 4 client of the muso music player"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "muso"
+path = "src/main.rs"
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.11", features = ["v4_10"] }
+muso-core = { path = "../muso-core" }
+muso-mpv = { path = "../muso-mpv" }

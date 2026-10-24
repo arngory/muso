@@ -40,12 +40,13 @@ pub trait Player {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlayerEvent {
-    /// A track started, after [`Player::load`] or a gapless switch. The
-    /// duration is `None` until the backend knows it (streams).
+    /// A track started, after [`Player::load`] or a gapless switch.
     Started {
-        duration: Option<Duration>,
         gapless: bool,
     },
+    /// The current track's length, once the backend knows it. Streams may
+    /// never send it, or send it again as it changes.
+    Duration(Duration),
     /// Where playback is now, sent a few times a second while playing.
     Position(Duration),
     Paused(bool),
