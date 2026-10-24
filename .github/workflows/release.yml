@@ -1,11 +1,19 @@
-# Pushing a tag like v0.2.0 builds muso and publishes a GitHub release with
-# a tarball of the binary. GTK 4 and libmpv come from the user's distro.
+# Publishes a GitHub release with a tarball of the muso binary. GTK 4 and
+# libmpv come from the user's distro.
+#
+# Two ways to start it:
+# - Actions → Release → Run workflow releases the version in Cargo.toml from
+#   the chosen branch, creating its tag (v<version>) on that commit.
+# - Pushing a tag like v0.2.0, which must match the version in Cargo.toml.
+# If a release for the tag already exists (made by hand on GitHub), the
+# tarball is added to it.
 
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,20 +26,30 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Check the tag matches the version in Cargo.toml
+      - name: Find the version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME doesn't match version $version in Cargo.toml" >&2
+          tag="v$version"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$tag" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version in Cargo.toml"
+              exit 1
+            fi
+          elif gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --silent 2>/dev/null; then
+            echo "::error::$tag is already released. Bump version in Cargo.toml first."
             exit 1
           fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "TAG=$tag" >> "$GITHUB_ENV"
       - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libmpv-dev
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --release
       - run: cargo build --release -p muso-gtk
       - name: Pack
         run: |
-          name=muso-${GITHUB_REF_NAME#v}-x86_64-linux
+          name=muso-$VERSION-x86_64-linux
           mkdir "$name"
           cp target/release/muso README.md LICENSE data/io.github.arngory.muso.desktop "$name/"
           tar czf "$name.tar.gz" "$name"
@@ -39,4 +57,10 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" muso-*.tar.gz* --title "muso ${GITHUB_REF_NAME#v}" --generate-notes
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" muso-*.tar.gz* --clobber
+          else
+            gh release create "$TAG" muso-*.tar.gz* --target "$GITHUB_SHA" \
+              --title "muso $VERSION" --generate-notes
+          fi
