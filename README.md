@@ -102,13 +102,14 @@ catalog, or a catalog has entries the code no longer uses.
 
 ## Releasing
 
-Bump `version` in `Cargo.toml`, merge, then push a matching tag:
+Bump `version` in `Cargo.toml` and merge. Then either:
 
-```sh
-git tag v0.2.0 && git push origin v0.2.0
-```
+- on GitHub, open Actions → Release → Run workflow and run it on `main`; it
+  tags the commit `v<version>` itself, or
+- push a matching tag: `git tag v0.2.0 && git push origin v0.2.0`.
 
-CI builds the tarball and publishes the GitHub release.
+CI runs the tests, builds the tarball and publishes the GitHub release. If a
+release for that tag was already drafted by hand, the tarball is added to it.
 
 ## License
 
