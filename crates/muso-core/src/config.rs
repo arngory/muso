@@ -27,6 +27,9 @@ pub struct Config {
     pub start_view: StartView,
     /// How long the controls stay on the cover after the mouse stops.
     pub osc_hide: Duration,
+    /// How long messages such as "Volume: 85%" stay up; mpv's option of
+    /// the same name, in milliseconds.
+    pub osd_duration: Duration,
     pub theme: Theme,
     /// `mpv-<option>=<value>` lines, without the prefix, in file order.
     pub mpv: Vec<(String, String)>,
@@ -41,6 +44,7 @@ impl Default for Config {
             replaygain: ReplayGain::Off,
             start_view: StartView::Cover,
             osc_hide: Duration::from_millis(1500),
+            osd_duration: Duration::from_millis(1000),
             theme: Theme::Dark,
             mpv: Vec::new(),
         }
@@ -146,6 +150,13 @@ impl Config {
                     .and_then(|s| Duration::try_from_secs_f64(s).ok())
                     .ok_or_else(|| format!("osc-hide is a number of seconds, not {v:?}"))?;
             }
+            "osd-duration" => {
+                let v = need(key, value)?;
+                self.osd_duration = v
+                    .parse()
+                    .map(Duration::from_millis)
+                    .map_err(|_| format!("osd-duration is a number of milliseconds, not {v:?}"))?;
+            }
             "theme" => {
                 self.theme = match need(key, value)? {
                     "dark" => Theme::Dark,
@@ -180,6 +191,7 @@ impl fmt::Display for Config {
         };
         writeln!(f, "start-view={start_view}")?;
         writeln!(f, "osc-hide={}", self.osc_hide.as_secs_f64())?;
+        writeln!(f, "osd-duration={}", self.osd_duration.as_millis())?;
         let theme = match self.theme {
             Theme::Dark => "dark",
             Theme::Light => "light",
@@ -237,6 +249,7 @@ gapless
 replaygain=album
 start-view=library
 osc-hide=2.5
+osd-duration=800
 theme=light
 mpv-audio-device=alsa/default
 mpv-audio-exclusive
@@ -255,6 +268,7 @@ mpv-audio-exclusive
         assert_eq!(config.replaygain, ReplayGain::Album);
         assert_eq!(config.start_view, StartView::Library);
         assert_eq!(config.osc_hide, Duration::from_millis(2500));
+        assert_eq!(config.osd_duration, Duration::from_millis(800));
         assert_eq!(config.theme, Theme::Light);
         assert_eq!(
             config.mpv,
@@ -292,6 +306,7 @@ mpv-audio-exclusive
             replaygain: ReplayGain::Track,
             start_view: StartView::Library,
             osc_hide: Duration::from_millis(750),
+            osd_duration: Duration::from_millis(2000),
             theme: Theme::Light,
             mpv: vec![("af".into(), "loudnorm".into())],
         };

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=muso
+Comment=Minimal music player built on mpv
+Exec=muso %F
+Terminal=false
+Categories=AudioVideo;Audio;Player;GTK;
+MimeType=audio/flac;audio/mpeg;audio/ogg;audio/x-vorbis+ogg;audio/opus;audio/mp4;audio/aac;audio/x-wav;audio/x-wavpack;audio/x-ape;audio/x-musepack;audio/x-aiff;audio/x-matroska;inode/directory;
+Keywords=music;audio;player;mpv;
+StartupNotify=true

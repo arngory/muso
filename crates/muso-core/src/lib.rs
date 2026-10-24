@@ -1,5 +1,5 @@
-//! The platform-independent part of muso: play queue, config files and the
-//! interface every playback backend implements.
+//! The platform-independent part of muso: play queue, tags and covers, config
+//! files and the interface every playback backend implements.
 //!
 //! Clients (GTK on Linux, Compose on Android, SwiftUI on Apple platforms)
 //! hold the state from here and send it commands; they never decide playback
@@ -9,3 +9,4 @@ pub mod config;
 pub mod input;
 pub mod player;
 pub mod queue;
+pub mod track;

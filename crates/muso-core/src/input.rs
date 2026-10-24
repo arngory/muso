@@ -13,31 +13,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-/// The built-in bindings, written as an `input.conf`.
-pub const DEFAULT_INPUT_CONF: &str = "\
-SPACE cycle pause
-LEFT seek -5
-RIGHT seek 5
-UP add volume 2
-DOWN add volume -2
-< playlist-prev
-> playlist-next
-m cycle mute
-s cycle shuffle
-r cycle repeat
-t cycle ontop
-l show playlists
-b show library
-q show queue
-/ search
-o open
-n play-next
-Shift+UP move up
-Shift+DOWN move down
-DEL remove
-Ctrl+, settings
-? help
-";
+/// The built-in bindings: `input.conf` at the root of this crate.
+pub const DEFAULT_INPUT_CONF: &str = include_str!("../input.conf");
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
@@ -150,6 +127,45 @@ impl fmt::Display for Command {
     }
 }
 
+/// Modifiers in the order mpv writes them.
+const MODIFIERS: &[&str] = &["Shift", "Ctrl", "Alt", "Meta"];
+
+/// Spells a key the way mpv does, so `ctrl+shift+left`, `Shift+Ctrl+LEFT`
+/// and `Shift+Ctrl+left` are the same binding. As in mpv, modifiers and
+/// named keys (`SPACE`, `F5`, `KP_ENTER`: anything longer than one
+/// character) ignore case and are written in capitals; a single character
+/// keeps its case, so `a` and `A` differ.
+pub fn normalize_key(key: &str) -> String {
+    let mut held = [false; 4];
+    let mut rest = key;
+    'strip: loop {
+        for (i, name) in MODIFIERS.iter().enumerate() {
+            let len = name.len() + 1;
+            let is_prefix = rest.len() > len
+                && rest.is_char_boundary(len)
+                && rest[..len - 1].eq_ignore_ascii_case(name)
+                && rest.as_bytes()[len - 1] == b'+';
+            if is_prefix {
+                held[i] = true;
+                rest = &rest[len..];
+                continue 'strip;
+            }
+        }
+        break;
+    }
+    let mut out = String::new();
+    for (name, _) in MODIFIERS.iter().zip(held).filter(|(_, h)| *h) {
+        out.push_str(name);
+        out.push('+');
+    }
+    if rest.chars().count() > 1 {
+        out.push_str(&rest.to_ascii_uppercase());
+    } else {
+        out.push_str(rest);
+    }
+    out
+}
+
 /// A line of `input.conf` that was skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputError {
@@ -205,10 +221,10 @@ impl Bindings {
             let command = command.split_once(" #").map_or(command, |(c, _)| c);
             match command.parse() {
                 Ok(Command::Ignore) => {
-                    self.0.remove(key);
+                    self.0.remove(&normalize_key(key));
                 }
                 Ok(command) => {
-                    self.0.insert(key.to_owned(), command);
+                    self.0.insert(normalize_key(key), command);
                 }
                 Err(message) => errors.push(InputError {
                     line: n + 1,
@@ -219,8 +235,9 @@ impl Bindings {
         (self, errors)
     }
 
+    /// The command bound to `key`, in any spelling [`normalize_key`] accepts.
     pub fn get(&self, key: &str) -> Option<&Command> {
-        self.0.get(key)
+        self.0.get(&normalize_key(key))
     }
 
     /// Every binding, sorted by key, for the help screen.
@@ -240,7 +257,10 @@ mod tests {
         assert_eq!(b.get("LEFT"), Some(&Command::Seek(-5.0)));
         assert_eq!(b.get("Ctrl+,"), Some(&Command::Settings));
         assert_eq!(b.get("Shift+DOWN"), Some(&Command::Move(Direction::Down)));
-        assert_eq!(b.iter().count(), DEFAULT_INPUT_CONF.lines().count());
+        let lines = DEFAULT_INPUT_CONF
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.starts_with('#'));
+        assert_eq!(b.iter().count(), lines.count());
     }
 
     #[test]
@@ -260,6 +280,26 @@ mod tests {
         let lines: Vec<usize> = errors.iter().map(|e| e.line).collect();
         assert_eq!(lines, [1, 2, 3]);
         assert_eq!(b.get("SPACE"), Some(&Command::CyclePause));
+    }
+
+    #[test]
+    fn keys_are_spelled_like_mpv() {
+        assert_eq!(normalize_key("space"), "SPACE");
+        assert_eq!(normalize_key("ctrl+shift+left"), "Shift+Ctrl+LEFT");
+        assert_eq!(normalize_key("Alt+Ctrl+a"), "Ctrl+Alt+a");
+        assert_eq!(normalize_key("A"), "A");
+        assert_eq!(normalize_key("Ctrl++"), "Ctrl++");
+        assert_eq!(normalize_key("+"), "+");
+        assert_eq!(normalize_key("f12"), "F12");
+        assert_eq!(normalize_key("Ctrl+ж"), "Ctrl+ж");
+    }
+
+    #[test]
+    fn bindings_match_any_spelling() {
+        let (b, errors) = Bindings::parse("ctrl+shift+right playlist-next\nspace ignore\n");
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(b.get("Shift+Ctrl+RIGHT"), Some(&Command::PlaylistNext));
+        assert_eq!(b.get("SPACE"), None);
     }
 
     #[test]
